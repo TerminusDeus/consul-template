@@ -26,7 +26,8 @@ func TestVaultAgentTokenQuery_Fetch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Remove(tokenFile.Name())
-	renderer.AtomicWrite(tokenFile.Name(), false, []byte("token"), 0644, false, hclog.Default())
+	// FIXME PLEASE
+	renderer.AtomicWrite(tokenFile.Name(), false, []byte("token"), 0644, false, []hclog.Logger{hclog.Default()})
 
 	d, err := NewVaultAgentTokenQuery(tokenFile.Name())
 	if err != nil {
@@ -43,7 +44,8 @@ func TestVaultAgentTokenQuery_Fetch(t *testing.T) {
 
 	// Update the contents.
 	renderer.AtomicWrite(
-		tokenFile.Name(), false, []byte("another_token"), 0644, false)
+		// FIXME PLEASE
+		tokenFile.Name(), false, []byte("another_token"), 0644, false, []hclog.Logger{hclog.Default()})
 	_, _, err = d.Fetch(clientSet, nil)
 	if err != nil {
 		t.Fatal(err)

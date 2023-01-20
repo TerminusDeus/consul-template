@@ -37,7 +37,7 @@ type RenderInput struct {
 	DryStream      io.Writer
 	Path           string
 	Perms          os.FileMode
-	Logger         hclog.Logger
+	Loggers        []hclog.Logger
 }
 
 // RenderResult is returned and stored. It contains the status of the render
@@ -78,7 +78,7 @@ func Render(i *RenderInput) (*RenderResult, error) {
 	if i.Dry {
 		fmt.Fprintf(i.DryStream, "> %s\n%s", i.Path, i.Contents)
 	} else {
-		if err := AtomicWrite(i.Path, i.CreateDestDirs, i.Contents, i.Perms, i.Backup, i.Logger); err != nil {
+		if err := AtomicWrite(i.Path, i.CreateDestDirs, i.Contents, i.Perms, i.Backup, i.Loggers); err != nil {
 			return nil, errors.Wrap(err, "failed writing file")
 		}
 	}
@@ -105,7 +105,7 @@ func Render(i *RenderInput) (*RenderResult, error) {
 //
 // If no errors occur, the Tempfile is "renamed" (moved) to the destination
 // path.
-func AtomicWrite(path string, createDestDirs bool, contents []byte, perms os.FileMode, backup bool, logger hclog.Logger) error {
+func AtomicWrite(path string, createDestDirs bool, contents []byte, perms os.FileMode, backup bool, loggers []hclog.Logger) error {
 	if path == "" {
 		return ErrMissingDest
 	}
@@ -153,8 +153,10 @@ func AtomicWrite(path string, createDestDirs bool, contents []byte, perms os.Fil
 
 		// The file exists, so try to preserve the ownership as well.
 		if err := preserveFilePermissions(f.Name(), currentInfo); err != nil {
-			logger.Warn(fmt.Sprintf("could not preserve file permissions for %q: %v",
-				f.Name(), err))
+			for _, logger := range loggers {
+				logger.Warn(fmt.Sprintf("could not preserve file permissions for %q: %v",
+					f.Name(), err))
+			}
 		}
 	}
 
@@ -172,7 +174,9 @@ func AtomicWrite(path string, createDestDirs bool, contents []byte, perms os.Fil
 		bak, old := path+".bak", path+".old.bak"
 		os.Rename(bak, old) // ignore error
 		if err := os.Link(path, bak); err != nil {
-			logger.Warn(fmt.Sprintf("could not backup %q: %v", path, err))
+			for _, logger := range loggers {
+				logger.Warn(fmt.Sprintf("could not backup %q: %v", path, err))
+			}
 		} else {
 			os.Remove(old) // ignore error
 		}

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/vault/sdk/helper/logging"
 
 	"github.com/hashicorp/consul-template/child"
 	"github.com/hashicorp/consul-template/config"
@@ -113,7 +112,7 @@ type Runner struct {
 	// stopped is a boolean of whether the runner is stopped
 	stopped bool
 
-	logger hclog.Logger
+	loggers []hclog.Logger
 }
 
 // RenderEvent captures the time and events that occurred for a template
@@ -176,18 +175,19 @@ type RenderEvent struct {
 // NewRunner accepts a slice of TemplateConfigs and returns a pointer to the new
 // Runner and any error that occurred during creation.
 func NewRunner(config *config.Config, dry bool) (*Runner, error) {
-	logger := hclog.New(&hclog.LoggerOptions{
-		Name:       "runner",
-		JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
-	})
-
-	logger.Info(fmt.Sprintf("creating new runner (dry: %v, once: %v)",
-		dry, config.Once))
+	loggers := make([]hclog.Logger, 0, len(hclog.AgentOptions))
+	for _, option := range hclog.AgentOptions {
+		loggers = append(loggers, hclog.New(option))
+	}
+	for _, logger := range loggers {
+		logger.Info(fmt.Sprintf("creating new runner (dry: %v, once: %v)",
+			dry, config.Once))
+	}
 
 	runner := &Runner{
-		config: config,
-		dry:    dry,
-		logger: logger,
+		config:  config,
+		dry:     dry,
+		loggers: loggers,
 	}
 
 	if err := runner.init(); err != nil {
@@ -201,7 +201,9 @@ func NewRunner(config *config.Config, dry bool) (*Runner, error) {
 // this function to push an item onto the runner's error channel and the halt
 // execution. This function is blocking and should be called as a goroutine.
 func (r *Runner) Start() {
-	r.logger.Info("starting")
+	for _, logger := range r.loggers {
+		logger.Info("starting")
+	}
 
 	// Create the pid before doing anything.
 	if err := r.storePid(); err != nil {
@@ -225,7 +227,9 @@ func (r *Runner) Start() {
 	// Fire an initial run to parse all the templates and setup the first-pass
 	// dependencies. This also forces any templates that have no dependencies to
 	// be rendered immediately (since they are already renderable).
-	r.logger.Debug("running initial templates")
+	for _, logger := range r.loggers {
+		logger.Debug("running initial templates")
+	}
 
 	if err := r.Run(); err != nil {
 		r.ErrCh <- err
@@ -235,14 +239,20 @@ func (r *Runner) Start() {
 	for {
 		// Warn the user if they are watching too many dependencies.
 		if r.watcher.Size() > saneViewLimit {
-			r.logger.Warn("watching %d dependencies - watching this "+
-				"many dependencies could DDoS your servers", r.watcher.Size())
+			for _, logger := range r.loggers {
+				logger.Warn("watching %d dependencies - watching this "+
+					"many dependencies could DDoS your servers", r.watcher.Size())
+			}
 		} else {
-			r.logger.Debug("watching %d dependencies", r.watcher.Size())
+			for _, logger := range r.loggers {
+				logger.Debug("watching %d dependencies", r.watcher.Size())
+			}
 		}
 
 		if r.allTemplatesRendered() {
-			r.logger.Debug("all templates rendered")
+			for _, logger := range r.loggers {
+				logger.Debug("all templates rendered")
+			}
 
 			// Enable quiescence for all templates if we have specified wait
 			// intervals.
@@ -254,9 +264,11 @@ func (r *Runner) Start() {
 
 				for _, c := range r.templateConfigsFor(t) {
 					if *c.Wait.Enabled {
-						r.logger.Debug(fmt.Sprintf("enabling template-specific "+
-							"quiescence for %q", t.ID()))
+						for _, logger := range r.loggers {
+							logger.Debug(fmt.Sprintf("enabling template-specific "+
 
+								"quiescence for %q", t.ID()))
+						}
 						r.quiescenceMap[t.ID()] = newQuiescence(
 							r.quiescenceCh, *c.Wait.Min, *c.Wait.Max, t)
 						continue NEXT_Q
@@ -264,8 +276,10 @@ func (r *Runner) Start() {
 				}
 
 				if *r.config.Wait.Enabled {
-					r.logger.Debug(fmt.Sprintf("enabling global quiescence for %q",
-						t.ID()))
+					for _, logger := range r.loggers {
+						logger.Debug(fmt.Sprintf("enabling global quiescence for %q", t.ID()))
+					}
+
 					r.quiescenceMap[t.ID()] = newQuiescence(
 						r.quiescenceCh, *r.config.Wait.Min, *r.config.Wait.Max, t)
 					continue NEXT_Q
@@ -277,9 +291,9 @@ func (r *Runner) Start() {
 			if config.StringPresent(r.config.Exec.Command) {
 				// Lock the child because we are about to check if it exists.
 				r.childLock.Lock()
-
-				r.logger.Trace("acquired child lock for command, spawning")
-
+				for _, logger := range r.loggers {
+					logger.Trace("acquired child lock for command, spawning")
+				}
 				if r.child == nil {
 					env := r.config.Exec.Env.Copy()
 					env.Custom = append(r.childEnv(), env.Custom...)
@@ -319,17 +333,23 @@ func (r *Runner) Start() {
 			// If we are running in once mode and all our templates are rendered,
 			// then we should exit here.
 			if r.config.Once {
-				r.logger.Info("once mode and all templates rendered")
+				for _, logger := range r.loggers {
+					logger.Info("once mode and all templates rendered")
+				}
 
 				if r.child != nil {
 					r.stopDedup()
 					r.stopWatcher()
 
-					r.logger.Info("waiting for child process to exit")
+					for _, logger := range r.loggers {
+						logger.Info("waiting for child process to exit")
+					}
 
 					select {
 					case c := <-childExitCh:
-						r.logger.Info("child process died")
+						for _, logger := range r.loggers {
+							logger.Info("child process died")
+						}
 
 						r.ErrCh <- NewErrChildDied(c)
 						return
@@ -370,13 +390,17 @@ func (r *Runner) Start() {
 			// We may get triggered by the de-duplication manager for either a change
 			// in leadership (acquired or lost lock), or an update of data for a template
 			// that we are watching.
-			r.logger.Info("watcher triggered by de-duplication manager")
+			for _, logger := range r.loggers {
+				logger.Info("watcher triggered by de-duplication manager")
+			}
 
 			break OUTER
 
 		case err := <-r.watcher.ErrCh():
 			// Push the error back up the stack
-			r.logger.Info(fmt.Sprintf("watcher reported error: %s", err))
+			for _, logger := range r.loggers {
+				logger.Info(fmt.Sprintf("watcher reported error: %s", err))
+			}
 
 			r.ErrCh <- err
 			return
@@ -384,17 +408,23 @@ func (r *Runner) Start() {
 		case tmpl := <-r.quiescenceCh:
 			// Remove the quiescence for this template from the map. This will force
 			// the upcoming Run call to actually evaluate and render the template.
-			r.logger.Debug(fmt.Sprintf("received template %q from quiescence", tmpl.ID()))
+			for _, logger := range r.loggers {
+				logger.Debug(fmt.Sprintf("received template %q from quiescence", tmpl.ID()))
+			}
 			delete(r.quiescenceMap, tmpl.ID())
 
 		case c := <-childExitCh:
-			r.logger.Info("child process died")
+			for _, logger := range r.loggers {
+				logger.Info("child process died")
+			}
 
 			r.ErrCh <- NewErrChildDied(c)
 			return
 
 		case <-r.DoneCh:
-			r.logger.Info("received finish")
+			for _, logger := range r.loggers {
+				logger.Info("received finish")
+			}
 
 			return
 		}
@@ -452,15 +482,19 @@ func (r *Runner) internalStop(immediately bool) {
 		return
 	}
 
-	r.logger.Info("stopping")
+	for _, logger := range r.loggers {
+		logger.Info("stopping")
+	}
 
 	r.stopDedup()
 	r.stopWatcher()
 	r.stopChild(immediately)
 
 	if err := r.deletePid(); err != nil {
-		r.logger.Warn(fmt.Sprintf("could not remove pid at %q: %s",
-			*r.config.PidFile, err))
+		for _, logger := range r.loggers {
+			logger.Warn(fmt.Sprintf("could not remove pid at %q: %s",
+				*r.config.PidFile, err))
+		}
 	}
 
 	r.stopped = true
@@ -470,14 +504,18 @@ func (r *Runner) internalStop(immediately bool) {
 
 func (r *Runner) stopDedup() {
 	if r.dedup != nil {
-		r.logger.Debug("stopping de-duplication manager")
+		for _, logger := range r.loggers {
+			logger.Debug("stopping de-duplication manager")
+		}
 		r.dedup.Stop()
 	}
 }
 
 func (r *Runner) stopWatcher() {
 	if r.watcher != nil {
-		r.logger.Debug("stopping watcher")
+		for _, logger := range r.loggers {
+			logger.Debug("stopping watcher")
+		}
 		r.watcher.Stop()
 	}
 }
@@ -488,10 +526,14 @@ func (r *Runner) stopChild(immediately bool) {
 
 	if r.child != nil {
 		if immediately {
-			r.logger.Debug("stopping child process immediately")
+			for _, logger := range r.loggers {
+				logger.Debug("stopping child process immediately")
+			}
 			r.child.StopImmediately()
 		} else {
-			r.logger.Debug("stopping child process")
+			for _, logger := range r.loggers {
+				logger.Debug("stopping child process")
+			}
 			r.child.Stop()
 		}
 	}
@@ -519,7 +561,9 @@ func (r *Runner) Receive(d dep.Dependency, data interface{}) {
 	//
 	// and by "little" bug, I mean really big bug.
 	if _, ok := r.dependencies[d.String()]; ok {
-		r.logger.Debug(fmt.Sprintf("receiving dependency %s", d))
+		for _, logger := range r.loggers {
+			logger.Debug(fmt.Sprintf("receiving dependency %s", d))
+		}
 
 		r.brain.Remember(d, data)
 	}
@@ -544,7 +588,9 @@ func (r *Runner) Signal(s os.Signal) error {
 // Please note that all templates are rendered **and then** any commands are
 // executed.
 func (r *Runner) Run() error {
-	r.logger.Debug("initiating run")
+	for _, logger := range r.loggers {
+		logger.Debug("initiating run")
+	}
 
 	var newRenderEvent, wouldRenderAny, renderedAny bool
 	runCtx := &templateRunCtx{
@@ -586,7 +632,9 @@ func (r *Runner) Run() error {
 	var errs []error
 	for _, t := range runCtx.commands {
 		command := config.StringVal(t.Exec.Command)
-		r.logger.Info(fmt.Sprintf("executing command %q from %s", command, t.Display()))
+		for _, logger := range r.loggers {
+			logger.Info(fmt.Sprintf("executing command %q from %s", command, t.Display()))
+		}
 		env := t.Exec.Env.Copy()
 		env.Custom = append(r.childEnv(), env.Custom...)
 		if _, err := spawnChild(&spawnChildInput{
@@ -662,7 +710,9 @@ type templateRunCtx struct {
 // error that occured. The render event is nil in the case that the template has
 // been already rendered and is a once template or if there is an error.
 func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*RenderEvent, error) {
-	r.logger.Debug(fmt.Sprintf("checking template %s", tmpl.ID()))
+	for _, logger := range r.loggers {
+		logger.Debug(fmt.Sprintf("checking template %s", tmpl.ID()))
+	}
 
 	// Grab the last event
 	r.renderEventsLock.RLock()
@@ -694,7 +744,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 		event, ok := r.renderEvents[tmpl.ID()]
 		r.renderEventsLock.RUnlock()
 		if ok && (event.WouldRender || event.DidRender) {
-			r.logger.Debug("once mode and already rendered")
+			for _, logger := range r.loggers {
+				logger.Debug("once mode and already rendered")
+			}
 
 			return nil, nil
 		}
@@ -715,9 +767,13 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 	missing, used := result.Missing, result.Used
 
 	if l := missing.Len(); l > 0 {
-		r.logger.Debug(fmt.Sprintf("missing data for %d dependencies", l))
+		for _, logger := range r.loggers {
+			logger.Debug(fmt.Sprintf("missing data for %d dependencies", l))
+		}
 		for _, missingDependency := range missing.List() {
-			r.logger.Debug(fmt.Sprintf("missing dependency: %s", missingDependency))
+			for _, logger := range r.loggers {
+				logger.Debug(fmt.Sprintf("missing dependency: %s", missingDependency))
+			}
 		}
 	}
 
@@ -727,7 +783,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 		// that is cached, but not have the watcher. We must treat this as
 		// missing so that we create the watcher and re-run the template.
 		if isLeader && !r.watcher.Watching(d) {
-			r.logger.Debug(fmt.Sprintf("add used dependency %s to missing since isLeader but do not have a watcher", d))
+			for _, logger := range r.loggers {
+				logger.Debug(fmt.Sprintf("add used dependency %s to missing since isLeader but do not have a watcher", d))
+			}
 			missing.Add(d)
 		}
 		if _, ok := runCtx.depsMap[d.String()]; !ok {
@@ -753,7 +811,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 	// If there are unwatched dependencies, start the watcher and exit since we
 	// won't have data.
 	if l := unwatched.Len(); l > 0 {
-		r.logger.Debug(fmt.Sprintf("was not watching %d dependencies", l))
+		for _, logger := range r.loggers {
+			logger.Debug(fmt.Sprintf("was not watching %d dependencies", l))
+		}
 		for _, d := range unwatched.List() {
 			// If we are deduplicating, we must still handle non-sharable
 			// dependencies, since those will be ignored.
@@ -767,7 +827,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 	// If the template is missing data for some dependencies then we are not
 	// ready to render and need to move on to the next one.
 	if l := missing.Len(); l > 0 {
-		r.logger.Debug(fmt.Sprintf("missing data for %d dependencies", l))
+		for _, logger := range r.loggers {
+			logger.Debug(fmt.Sprintf("missing data for %d dependencies", l))
+		}
 
 		return event, nil
 	}
@@ -775,7 +837,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 	// Trigger an update of the de-duplication manager
 	if r.dedup != nil && isLeader {
 		if err := r.dedup.UpdateDeps(tmpl, used.List()); err != nil {
-			r.logger.Error(fmt.Sprintf("failed to update dependency data for de-duplication: %v", err))
+			for _, logger := range r.loggers {
+				logger.Error(fmt.Sprintf("failed to update dependency data for de-duplication: %v", err))
+			}
 		}
 	}
 
@@ -791,7 +855,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 	// For each template configuration that is tied to this template, attempt to
 	// render it to disk and accumulate commands for later use.
 	for _, templateConfig := range r.templateConfigsFor(tmpl) {
-		r.logger.Debug(fmt.Sprintf("rendering %s", templateConfig.Display()))
+		for _, logger := range r.loggers {
+			logger.Debug(fmt.Sprintf("rendering %s", templateConfig.Display()))
+		}
 
 		// Render the template, taking dry mode into account
 		result, err := renderer.Render(&renderer.RenderInput{
@@ -802,7 +868,7 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 			DryStream:      r.outStream,
 			Path:           config.StringVal(templateConfig.Destination),
 			Perms:          config.FileModeVal(templateConfig.Perms),
-			Logger:         r.logger,
+			Loggers:        r.loggers,
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "error rendering "+templateConfig.Display())
@@ -824,7 +890,9 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 		// If we _actually_ rendered the template to disk, we want to run the
 		// appropriate commands.
 		if result.DidRender {
-			r.logger.Info(fmt.Sprintf("rendering %s", templateConfig.Display()))
+			for _, logger := range r.loggers {
+				logger.Info(fmt.Sprintf("rendering %s", templateConfig.Display()))
+			}
 
 			// This event did render
 			event.DidRender = true
@@ -847,11 +915,16 @@ func (r *Runner) runTemplate(tmpl *template.Template, runCtx *templateRunCtx) (*
 				if c := config.StringVal(templateConfig.Exec.Command); c != "" {
 					existing := findCommand(templateConfig, runCtx.commands)
 					if existing != nil {
-						r.logger.Debug(fmt.Sprintf("skipping command %q from %s (already appended from %s)",
-							c, templateConfig.Display(), existing.Display()))
+						for _, logger := range r.loggers {
+							logger.Debug(fmt.Sprintf("skipping command %q from %s (already appended from %s)", c, templateConfig.Display(), existing.Display()))
+						}
+
 					} else {
-						r.logger.Debug(fmt.Sprintf("appending command %q from %s",
-							c, templateConfig.Display()))
+						for _, logger := range r.loggers {
+							logger.Debug(fmt.Sprintf("appending command %q from %s",
+
+								c, templateConfig.Display()))
+						}
 						runCtx.commands = append(runCtx.commands, templateConfig)
 					}
 				}
@@ -874,7 +947,9 @@ func (r *Runner) init() error {
 	if err != nil {
 		return err
 	}
-	r.logger.Debug(fmt.Sprintf("final config: %s", result))
+	for _, logger := range r.loggers {
+		logger.Debug(fmt.Sprintf("final config: %s", result))
+	}
 
 	dep.SetVaultDefaultLeaseDuration(config.TimeDurationVal(r.config.Vault.DefaultLeaseDuration))
 
@@ -885,7 +960,7 @@ func (r *Runner) init() error {
 	}
 
 	// Create the watcher
-	watcher, err := newWatcher(r.config, clients, r.config.Once, r.logger)
+	watcher, err := newWatcher(r.config, clients, r.config.Once, r.loggers)
 	if err != nil {
 		return fmt.Errorf("runner: %s", err)
 	}
@@ -956,7 +1031,9 @@ func (r *Runner) init() error {
 
 	if *r.config.Dedup.Enabled {
 		if r.config.Once {
-			r.logger.Info("disabling de-duplication in once mode")
+			for _, logger := range r.loggers {
+				logger.Info("disabling de-duplication in once mode")
+			}
 		} else {
 			r.dedup, err = NewDedupManager(r.config.Dedup, clients, r.brain, r.templates)
 			if err != nil {
@@ -978,15 +1055,21 @@ func (r *Runner) diffAndUpdateDeps(depsMap map[string]dep.Dependency) {
 	defer r.dependenciesLock.Unlock()
 
 	// Diff and up the list of dependencies, stopping any unneeded watchers.
-	r.logger.Debug("diffing and updating dependencies")
+	for _, logger := range r.loggers {
+		logger.Debug("diffing and updating dependencies")
+	}
 
 	for key, d := range r.dependencies {
 		if _, ok := depsMap[key]; !ok {
-			r.logger.Debug(fmt.Sprintf("%s is no longer needed", d))
+			for _, logger := range r.loggers {
+				logger.Debug(fmt.Sprintf("%s is no longer needed", d))
+			}
 			r.watcher.Remove(d)
 			r.brain.Forget(d)
 		} else {
-			r.logger.Debug(fmt.Sprintf("%s is still needed", d))
+			for _, logger := range r.loggers {
+				logger.Debug(fmt.Sprintf("%s is still needed", d))
+			}
 		}
 	}
 
@@ -1108,7 +1191,9 @@ func (r *Runner) storePid() error {
 		return nil
 	}
 
-	r.logger.Info(fmt.Sprintf("creating pid file at %q", path))
+	for _, logger := range r.loggers {
+		logger.Info(fmt.Sprintf("creating pid file at %q", path))
+	}
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
@@ -1131,7 +1216,9 @@ func (r *Runner) deletePid() error {
 		return nil
 	}
 
-	r.logger.Debug(fmt.Sprintf("removing pid file at %q", path))
+	for _, logger := range r.loggers {
+		logger.Debug(fmt.Sprintf("removing pid file at %q", path))
+	}
 
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -1330,9 +1417,10 @@ func newClientSet(c *config.Config) (*dep.ClientSet, error) {
 }
 
 // newWatcher creates a new watcher.
-func newWatcher(c *config.Config, clients *dep.ClientSet, once bool, logger hclog.Logger) (*watch.Watcher, error) {
-	logger.Info("creating watcher")
-
+func newWatcher(c *config.Config, clients *dep.ClientSet, once bool, loggers []hclog.Logger) (*watch.Watcher, error) {
+	for _, logger := range loggers {
+		logger.Info("creating watcher")
+	}
 	w, err := watch.NewWatcher(&watch.NewWatcherInput{
 		Clients:             clients,
 		MaxStale:            config.TimeDurationVal(c.MaxStale),
