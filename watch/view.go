@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/vault/sdk/helper/logging"
 
-	dep "github.com/hashicorp/consul-template/dependency"
+	dep "github.com/TerminusDeus/consul-template/dependency"
 )
 
 // View is a representation of a Dependency and the most recent data it has
@@ -46,7 +45,7 @@ type View struct {
 	// stopCh is used to stop polling on this View
 	stopCh chan struct{}
 
-	logger hclog.Logger
+	loggers []hclog.Logger
 }
 
 // NewViewInput is used as input to the NewView function.
@@ -75,6 +74,11 @@ type NewViewInput struct {
 
 // NewView constructs a new view with the given inputs.
 func NewView(i *NewViewInput) (*View, error) {
+	loggers := make([]hclog.Logger, 0, len(hclog.AgentOptions))
+	for _, option := range hclog.AgentOptions {
+		option.Name = "view"
+		loggers = append(loggers, hclog.New(option))
+	}
 	return &View{
 		dependency:         i.Dependency,
 		clients:            i.Clients,
@@ -83,10 +87,7 @@ func NewView(i *NewViewInput) (*View, error) {
 		once:               i.Once,
 		retryFunc:          i.RetryFunc,
 		stopCh:             make(chan struct{}, 1),
-		logger: hclog.New(&hclog.LoggerOptions{
-			Name:       "view",
-			JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
-		}),
+		loggers:            loggers,
 	}, nil
 }
 
@@ -131,7 +132,9 @@ func (v *View) poll(viewCh chan<- *View, errCh chan<- error) {
 			// have some successful requests
 			retries = 0
 
-			v.logger.Trace(fmt.Sprintf("%s received data", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s received data", v.dependency))
+			}
 			select {
 			case <-v.stopCh:
 				return
@@ -150,15 +153,19 @@ func (v *View) poll(viewCh chan<- *View, errCh chan<- error) {
 			// example, Consul make have an outage, but when it returns, the view
 			// is unchanged. We have to reset the counter retries, but not update the
 			// actual template.
-			v.logger.Trace(fmt.Sprintf("%s successful contact, resetting retries", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s successful contact, resetting retries", v.dependency))
+			}
 			retries = 0
 			goto WAIT
 		case err := <-fetchErrCh:
 			if v.retryFunc != nil {
 				retry, sleep := v.retryFunc(retries)
 				if retry {
-					v.logger.Warn(fmt.Sprintf("%s (retry attempt %d after %q)",
-						err, retries+1, sleep))
+					for _, logger := range v.loggers {
+						logger.Warn(fmt.Sprintf("%s (retry attempt %d after %q)",
+							err, retries+1, sleep))
+					}
 					select {
 					case <-time.After(sleep):
 						retries++
@@ -167,7 +174,9 @@ func (v *View) poll(viewCh chan<- *View, errCh chan<- error) {
 						return
 					}
 				}
-				v.logger.Error(fmt.Sprintf("%s (exceeded maximum retries)", err))
+				for _, logger := range v.loggers {
+					logger.Error(fmt.Sprintf("%s (exceeded maximum retries)", err))
+				}
 			}
 
 			// Push the error back up to the watcher
@@ -178,7 +187,9 @@ func (v *View) poll(viewCh chan<- *View, errCh chan<- error) {
 				return
 			}
 		case <-v.stopCh:
-			v.logger.Trace(fmt.Sprintf("%s stopping poll (received on view stopCh)", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s stopping poll (received on view stopCh)", v.dependency))
+			}
 			return
 		}
 	}
@@ -190,7 +201,9 @@ func (v *View) poll(viewCh chan<- *View, errCh chan<- error) {
 // result of doneCh and errCh. It is assumed that only one instance of fetch
 // is running per View and therefore no locking or mutexes are used.
 func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
-	v.logger.Trace(fmt.Sprintf("%s starting fetch", v.dependency))
+	for _, logger := range v.loggers {
+		logger.Trace(fmt.Sprintf("%s starting fetch", v.dependency))
+	}
 
 	var allowStale bool
 	if v.maxStale != 0 {
@@ -215,7 +228,9 @@ func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
 		})
 		if err != nil {
 			if err == dep.ErrStopped {
-				v.logger.Trace(fmt.Sprintf("%s reported stop", v.dependency))
+				for _, logger := range v.loggers {
+					logger.Trace(fmt.Sprintf("%s reported stop", v.dependency))
+				}
 			} else {
 				errCh <- err
 			}
@@ -231,7 +246,9 @@ func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
 		// If we got this far, we received data successfully. That data might not
 		// trigger a data update (because we could continue below), but we need to
 		// inform the poller to reset the retry count.
-		v.logger.Trace(fmt.Sprintf("%s marking successful data response", v.dependency))
+		for _, logger := range v.loggers {
+			logger.Trace(fmt.Sprintf("%s marking successful data response", v.dependency))
+		}
 		select {
 		case successCh <- struct{}{}:
 		default:
@@ -239,7 +256,9 @@ func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
 
 		if allowStale && rm.LastContact > v.maxStale {
 			allowStale = false
-			v.logger.Trace(fmt.Sprintf("%s stale data (last contact exceeded max_stale)", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s stale data (last contact exceeded max_stale)", v.dependency))
+			}
 			continue
 		}
 
@@ -252,13 +271,17 @@ func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
 		}
 
 		if rm.LastIndex == v.lastIndex {
-			v.logger.Trace(fmt.Sprintf("%s no new data (index was the same)", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s no new data (index was the same)", v.dependency))
+			}
 			continue
 		}
 
 		v.dataLock.Lock()
 		if rm.LastIndex < v.lastIndex {
-			v.logger.Trace(fmt.Sprintf("%s had a lower index, resetting", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s had a lower index, resetting", v.dependency))
+			}
 			v.lastIndex = 0
 			v.dataLock.Unlock()
 			continue
@@ -266,13 +289,17 @@ func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
 		v.lastIndex = rm.LastIndex
 
 		if v.receivedData && reflect.DeepEqual(data, v.data) {
-			v.logger.Trace(fmt.Sprintf("%s no new data (contents were the same)", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s no new data (contents were the same)", v.dependency))
+			}
 			v.dataLock.Unlock()
 			continue
 		}
 
 		if data == nil && rm.Block {
-			v.logger.Trace(fmt.Sprintf("%s asked for blocking query", v.dependency))
+			for _, logger := range v.loggers {
+				logger.Trace(fmt.Sprintf("%s asked for blocking query", v.dependency))
+			}
 			v.dataLock.Unlock()
 			continue
 		}

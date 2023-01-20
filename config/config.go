@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hashicorp/consul-template/signals"
+	"github.com/TerminusDeus/consul-template/signals"
 	"github.com/hashicorp/hcl"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/mitchellh/mapstructure"

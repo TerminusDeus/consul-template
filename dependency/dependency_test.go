@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/hashicorp/consul-template/test"
+	"github.com/TerminusDeus/consul-template/test"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil"
 	vapi "github.com/hashicorp/vault/api"

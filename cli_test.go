@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/consul-template/config"
-	"github.com/hashicorp/consul-template/test"
+	"github.com/TerminusDeus/consul-template/config"
+	"github.com/TerminusDeus/consul-template/test"
 	gatedio "github.com/hashicorp/go-gatedio"
 )
 

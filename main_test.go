@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	dep "github.com/hashicorp/consul-template/dependency"
-	"github.com/hashicorp/consul-template/test"
+	dep "github.com/TerminusDeus/consul-template/dependency"
+	"github.com/TerminusDeus/consul-template/test"
 	"github.com/hashicorp/consul/sdk/testutil"
 )
 

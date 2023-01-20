@@ -12,10 +12,10 @@ import (
 
 	"github.com/mitchellh/hashstructure"
 
-	"github.com/hashicorp/consul-template/config"
-	dep "github.com/hashicorp/consul-template/dependency"
-	"github.com/hashicorp/consul-template/template"
-	"github.com/hashicorp/consul-template/version"
+	"github.com/TerminusDeus/consul-template/config"
+	dep "github.com/TerminusDeus/consul-template/dependency"
+	"github.com/TerminusDeus/consul-template/template"
+	"github.com/TerminusDeus/consul-template/version"
 	consulapi "github.com/hashicorp/consul/api"
 )
 
@@ -71,7 +71,6 @@ func templateNoData() []byte {
 // would normally require 2500 blocking queries. Using deduplication, one
 // instance has 50 view queries, plus 50 additional queries on the lock
 // path for a total of 100.
-//
 type DedupManager struct {
 	// config is the deduplicate configuration
 	config *config.DedupConfig
@@ -233,7 +232,7 @@ func (d *DedupManager) UpdateDeps(t *template.Template, deps []dep.Dependency) e
 	// Compute stable hash of the data. Note we don't compute this over the actual
 	// encoded value since gob encoding does not guarantee stable ordering for
 	// maps so spuriously returns a different hash most times. See
-	// https://github.com/hashicorp/consul-template/issues/1099.
+	// https://github.com/TerminusDeus/consul-template/issues/1099.
 	hash, err := hashstructure.Hash(td, nil)
 	if err != nil {
 		return fmt.Errorf("calculating hash failed: %v", err)

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/consul-template/renderer"
+	"github.com/TerminusDeus/consul-template/renderer"
 	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )

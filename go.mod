@@ -1,4 +1,4 @@
-module github.com/hashicorp/consul-template
+module github.com/TerminusDeus/consul-template
 
 go 1.12
 
@@ -28,7 +28,6 @@ require (
 	github.com/hashicorp/logutils v1.0.0
 	github.com/hashicorp/serf v0.9.4 // indirect
 	github.com/hashicorp/vault/api v1.0.5-0.20190730042357-746c0b111519
-	github.com/hashicorp/vault/sdk v0.1.14-0.20190730042320-0dc007d98cc8
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-shellwords v1.0.12

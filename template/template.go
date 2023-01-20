@@ -9,7 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	dep "github.com/hashicorp/consul-template/dependency"
+	dep "github.com/TerminusDeus/consul-template/dependency"
 )
 
 var (
@@ -294,7 +294,7 @@ func funcMap(i *funcMapInput) template.FuncMap {
 		"split":                 split,
 		"byMeta":                byMeta,
 		"sockaddr":              sockaddr,
-    
+
 		// Math functions
 		"add":      add,
 		"subtract": subtract,

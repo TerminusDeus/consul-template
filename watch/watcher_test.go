@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	dep "github.com/hashicorp/consul-template/dependency"
+	dep "github.com/TerminusDeus/consul-template/dependency"
 )
 
 func TestAdd_updatesMap(t *testing.T) {

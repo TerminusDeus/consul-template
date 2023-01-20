@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	dep "github.com/hashicorp/consul-template/dependency"
+	dep "github.com/TerminusDeus/consul-template/dependency"
 	"github.com/hashicorp/consul/api"
 )
 

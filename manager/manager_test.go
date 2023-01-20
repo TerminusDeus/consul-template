@@ -7,10 +7,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/consul-template/config"
-	dep "github.com/hashicorp/consul-template/dependency"
-	"github.com/hashicorp/consul-template/template"
-	"github.com/hashicorp/consul-template/test"
+	"github.com/TerminusDeus/consul-template/config"
+	dep "github.com/TerminusDeus/consul-template/dependency"
+	"github.com/TerminusDeus/consul-template/template"
+	"github.com/TerminusDeus/consul-template/test"
 	"github.com/hashicorp/consul/sdk/testutil"
 )
 

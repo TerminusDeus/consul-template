@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	dep "github.com/hashicorp/consul-template/dependency"
+	dep "github.com/TerminusDeus/consul-template/dependency"
 )
 
 func TestNewBrain(t *testing.T) {
