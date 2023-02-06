@@ -874,7 +874,9 @@ func (r *Runner) init() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||| init")
 	r.logger.Debug(fmt.Sprintf("final config: %s", result))
+	r.logger.Info(fmt.Sprintf("final config: %s", result))
 
 	dep.SetVaultDefaultLeaseDuration(config.TimeDurationVal(r.config.Vault.DefaultLeaseDuration))
 
