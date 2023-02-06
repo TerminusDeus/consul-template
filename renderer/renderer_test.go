@@ -27,8 +27,8 @@ func TestAtomicWrite(t *testing.T) {
 		if err := os.RemoveAll(outDir); err != nil {
 			t.Fatal(err)
 		}
-		// FIXME PLEASE
-		if err := AtomicWrite(outFile.Name(), true, nil, 0644, false, []hclog.Logger{hclog.Default()}); err != nil {
+
+		if err := AtomicWrite(outFile.Name(), true, nil, 0644, false, hclog.Default()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -48,8 +48,8 @@ func TestAtomicWrite(t *testing.T) {
 			t.Fatal(err)
 		}
 		os.Chmod(outFile.Name(), 0600)
-		// FIXME PLEASE
-		if err := AtomicWrite(outFile.Name(), true, nil, 0, false, []hclog.Logger{hclog.Default()}); err != nil {
+
+		if err := AtomicWrite(outFile.Name(), true, nil, 0, false, hclog.Default()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -73,8 +73,8 @@ func TestAtomicWrite(t *testing.T) {
 		defer os.RemoveAll(outDir)
 
 		// Try AtomicWrite to a file that doesn't exist yet
-		file := filepath.Join(outDir, "nope/not/it/create") // FIXME PLEASE
-		if err := AtomicWrite(file, true, nil, 0644, false, []hclog.Logger{hclog.Default()}); err != nil {
+		file := filepath.Join(outDir, "nope/not/it/create")
+		if err := AtomicWrite(file, true, nil, 0644, false, hclog.Default()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -92,8 +92,8 @@ func TestAtomicWrite(t *testing.T) {
 		defer os.RemoveAll(outDir)
 
 		// Try AtomicWrite to a file that doesn't exist yet
-		file := filepath.Join(outDir, "nope/not/it/nope-no-create") // FIXME PLEASE
-		if err := AtomicWrite(file, false, nil, 0644, false, []hclog.Logger{hclog.Default()}); err != ErrNoParentDir {
+		file := filepath.Join(outDir, "nope/not/it/nope-no-create")
+		if err := AtomicWrite(file, false, nil, 0644, false, hclog.Default()); err != ErrNoParentDir {
 			t.Fatalf("expected %q to be %q", err, ErrNoParentDir)
 		}
 	})
@@ -114,8 +114,8 @@ func TestAtomicWrite(t *testing.T) {
 		if _, err := outFile.Write([]byte("before")); err != nil {
 			t.Fatal(err)
 		}
-		// FIXME PLEASE
-		if err := AtomicWrite(outFile.Name(), true, []byte("after"), 0644, true, []hclog.Logger{hclog.Default()}); err != nil {
+
+		if err := AtomicWrite(outFile.Name(), true, []byte("after"), 0644, true, hclog.Default()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -149,8 +149,8 @@ func TestAtomicWrite(t *testing.T) {
 		if err := os.Remove(outFile.Name()); err != nil {
 			t.Fatal(err)
 		}
-		// FIXME PLEASE
-		if err := AtomicWrite(outFile.Name(), true, nil, 0644, true, []hclog.Logger{hclog.Default()}); err != nil {
+
+		if err := AtomicWrite(outFile.Name(), true, nil, 0644, true, hclog.Default()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -187,15 +187,14 @@ func TestAtomicWrite(t *testing.T) {
 				t.Fatalf("expected %q to be %q", f, []byte(content))
 			}
 		}
-		// FIXME PLEASE
-		err = AtomicWrite(outFile.Name(), true, []byte("second"), 0644, true, []hclog.Logger{hclog.Default()})
+
+		err = AtomicWrite(outFile.Name(), true, []byte("second"), 0644, true, hclog.Default())
 		if err != nil {
 			t.Fatal(err)
 		}
 		contains(outFile.Name(), "first")
 
-		// FIXME PLEASE
-		err = AtomicWrite(outFile.Name(), true, []byte("third"), 0644, true, []hclog.Logger{hclog.Default()})
+		err = AtomicWrite(outFile.Name(), true, []byte("third"), 0644, true, hclog.Default())
 		if err != nil {
 			t.Fatal(err)
 		}

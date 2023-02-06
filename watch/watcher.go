@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vault/sdk/helper/logging"
 
 	dep "github.com/TerminusDeus/consul-template/dependency"
 	"github.com/pkg/errors"
@@ -48,7 +49,7 @@ type Watcher struct {
 	retryFuncDefault RetryFunc
 	retryFuncVault   RetryFunc
 
-	loggers []hclog.Logger
+	logger hclog.Logger
 }
 
 type NewWatcherInput struct {
@@ -81,12 +82,6 @@ type NewWatcherInput struct {
 
 // NewWatcher creates a new watcher using the given API client.
 func NewWatcher(i *NewWatcherInput) (*Watcher, error) {
-	loggers := make([]hclog.Logger, 0, len(hclog.AgentOptions))
-	for _, option := range hclog.AgentOptions {
-		option.Name = "watcher"
-		loggers = append(loggers, hclog.New(option))
-	}
-
 	w := &Watcher{
 		clients:            i.Clients,
 		depViewMap:         make(map[string]*View),
@@ -98,7 +93,10 @@ func NewWatcher(i *NewWatcherInput) (*Watcher, error) {
 		retryFuncConsul:    i.RetryFuncConsul,
 		retryFuncDefault:   i.RetryFuncDefault,
 		retryFuncVault:     i.RetryFuncVault,
-		loggers:            loggers,
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:       "watcher",
+			JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
+		}),
 	}
 
 	// Start a watcher for the Vault renew if that config was specified
@@ -148,14 +146,10 @@ func (w *Watcher) Add(d dep.Dependency) (bool, error) {
 	w.Lock()
 	defer w.Unlock()
 
-	for _, logger := range w.loggers {
-		logger.Debug(fmt.Sprintf("adding %s", d))
-	}
+	w.logger.Debug(fmt.Sprintf("adding %s", d))
 
 	if _, ok := w.depViewMap[d.String()]; ok {
-		for _, logger := range w.loggers {
-			logger.Trace(fmt.Sprintf("%s already exists, skipping", d))
-		}
+		w.logger.Trace(fmt.Sprintf("%s already exists, skipping", d))
 		return false, nil
 	}
 
@@ -182,9 +176,7 @@ func (w *Watcher) Add(d dep.Dependency) (bool, error) {
 		return false, errors.Wrap(err, "watcher")
 	}
 
-	for _, logger := range w.loggers {
-		logger.Trace(fmt.Sprintf("%s starting", d))
-	}
+	w.logger.Trace(fmt.Sprintf("%s starting", d))
 
 	w.depViewMap[d.String()] = v
 	go v.poll(w.dataCh, w.errCh)
@@ -222,21 +214,16 @@ func (w *Watcher) Remove(d dep.Dependency) bool {
 	w.Lock()
 	defer w.Unlock()
 
-	for _, logger := range w.loggers {
-		logger.Debug(fmt.Sprintf("removing %s", d))
-	}
+	w.logger.Debug(fmt.Sprintf("removing %s", d))
 
 	if view, ok := w.depViewMap[d.String()]; ok {
-		for _, logger := range w.loggers {
-			logger.Trace(fmt.Sprintf("removing %s", d))
-		}
+		w.logger.Trace(fmt.Sprintf("removing %s", d))
 		view.stop()
 		delete(w.depViewMap, d.String())
 		return true
 	}
-	for _, logger := range w.loggers {
-		logger.Trace(fmt.Sprintf("%s did not exist, skipping", d))
-	}
+
+	w.logger.Trace(fmt.Sprintf("%s did not exist, skipping", d))
 	return false
 }
 
@@ -252,16 +239,14 @@ func (w *Watcher) Size() int {
 func (w *Watcher) Stop() {
 	w.Lock()
 	defer w.Unlock()
-	for _, logger := range w.loggers {
-		logger.Debug("stopping all views")
-	}
+
+	w.logger.Debug("stopping all views")
+
 	for _, view := range w.depViewMap {
 		if view == nil {
 			continue
 		}
-		for _, logger := range w.loggers {
-			logger.Trace(fmt.Sprintf("stopping %s", view.Dependency()))
-		}
+		w.logger.Trace(fmt.Sprintf("stopping %s", view.Dependency()))
 		view.stop()
 	}
 
