@@ -235,10 +235,9 @@ func (r *Runner) Start() {
 	for {
 		// Warn the user if they are watching too many dependencies.
 		if r.watcher.Size() > saneViewLimit {
-			r.logger.Warn("watching %d dependencies - watching this "+
-				"many dependencies could DDoS your servers", r.watcher.Size())
+			r.logger.Warn(fmt.Sprintf("watching %d dependencies - watching this many dependencies could DDoS your servers", r.watcher.Size()))
 		} else {
-			r.logger.Debug("watching %d dependencies", r.watcher.Size())
+			r.logger.Debug(fmt.Sprintf("watching %d dependencies", r.watcher.Size()))
 		}
 
 		if r.allTemplatesRendered() {
