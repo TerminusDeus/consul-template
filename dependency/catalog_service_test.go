@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -207,7 +208,7 @@ func TestCatalogServiceQuery_Fetch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			act, _, err := d.Fetch(testClients, nil)
+			act, _, err := d.Fetch(testClients, nil, hclog.Default())
 			if err != nil {
 				t.Fatal(err)
 			}

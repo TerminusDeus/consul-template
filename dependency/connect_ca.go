@@ -1,9 +1,10 @@
 package dependency
 
 import (
-	"log"
+	"fmt"
 	"net/url"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -22,7 +23,7 @@ func NewConnectCAQuery() *ConnectCAQuery {
 	}
 }
 
-func (d *ConnectCAQuery) Fetch(clients *ClientSet, opts *QueryOptions) (
+func (d *ConnectCAQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (
 	interface{}, *ResponseMetadata, error,
 ) {
 	select {
@@ -32,10 +33,10 @@ func (d *ConnectCAQuery) Fetch(clients *ClientSet, opts *QueryOptions) (
 	}
 
 	opts = opts.Merge(nil)
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/agent/connect/ca/roots",
 		RawQuery: opts.String(),
-	})
+	}))
 
 	certs, md, err := clients.Consul().Agent().ConnectCARoots(
 		opts.ToConsulOpts())
@@ -43,8 +44,8 @@ func (d *ConnectCAQuery) Fetch(clients *ClientSet, opts *QueryOptions) (
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
-	log.Printf("[TRACE] %s: returned %d results", d, len(certs.Roots))
-	log.Printf("[TRACE] %s: %#v ", d, md)
+	logger.Trace(fmt.Sprintf("%s: returned %d results", d, len(certs.Roots)))
+	logger.Trace(fmt.Sprintf("%s: %#v ", d, md))
 
 	rm := &ResponseMetadata{
 		LastIndex:   md.LastIndex,

@@ -3,11 +3,11 @@ package dependency
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
 )
 
@@ -66,15 +66,14 @@ type SecretWrapInfo struct {
 	WrappedAccessor string
 }
 
-//
 type renewer interface {
 	Dependency
 	stopChan() chan struct{}
 	secrets() (*Secret, *api.Secret)
 }
 
-func renewSecret(clients *ClientSet, d renewer) error {
-	log.Printf("[TRACE] %s: starting renewer", d)
+func renewSecret(clients *ClientSet, d renewer, logger hclog.Logger) error {
+	logger.Trace(fmt.Sprintf("%s: starting renewer", d))
 
 	secret, vaultSecret := d.secrets()
 	renewer, err := clients.Vault().NewRenewer(&api.RenewerInput{
@@ -90,13 +89,13 @@ func renewSecret(clients *ClientSet, d renewer) error {
 		select {
 		case err := <-renewer.DoneCh():
 			if err != nil {
-				log.Printf("[WARN] %s: failed to renew: %s", d, err)
+				logger.Warn(fmt.Sprintf("%s: failed to renew: %s", d, err))
 			}
-			log.Printf("[WARN] %s: renewer done (maybe the lease expired)", d)
+			logger.Warn(fmt.Sprintf("%s: renewer done (maybe the lease expired)", d))
 			return nil
 		case renewal := <-renewer.RenewCh():
-			log.Printf("[TRACE] %s: successfully renewed", d)
-			printVaultWarnings(d, renewal.Secret.Warnings)
+			logger.Trace(fmt.Sprintf("%s: successfully renewed", d))
+			printVaultWarnings(d, renewal.Secret.Warnings, logger)
 			updateSecret(secret, renewal.Secret)
 		case <-d.stopChan():
 			return ErrStopped
@@ -106,7 +105,7 @@ func renewSecret(clients *ClientSet, d renewer) error {
 
 // leaseCheckWait accepts a secret and returns the recommended amount of
 // time to sleep.
-func leaseCheckWait(s *Secret) time.Duration {
+func leaseCheckWait(s *Secret, logger hclog.Logger) time.Duration {
 	// Handle whether this is an auth or a regular secret.
 	base := s.LeaseDuration
 	if s.Auth != nil && s.Auth.LeaseDuration > 0 {
@@ -118,7 +117,7 @@ func leaseCheckWait(s *Secret) time.Duration {
 		if expInterface, ok := s.Data["expiration"]; ok {
 			if expData, err := expInterface.(json.Number).Int64(); err == nil {
 				base = int(expData - time.Now().Unix())
-				log.Printf("[DEBUG] Found certificate and set lease duration to %d seconds", base)
+				logger.Debug(fmt.Sprintf("Found certificate and set lease duration to %d seconds", base))
 			}
 		}
 	}
@@ -128,7 +127,7 @@ func leaseCheckWait(s *Secret) time.Duration {
 		if expInterface, ok := s.Data["secret_id_ttl"]; ok {
 			if ttlData, err := expInterface.(json.Number).Int64(); err == nil && ttlData > 0 {
 				base = int(ttlData) + 1
-				log.Printf("[DEBUG] Found approle secret_id and non-zero secret_id_ttl, setting lease duration to %d seconds", base)
+				logger.Debug(fmt.Sprintf("Found approle secret_id and non-zero secret_id_ttl, setting lease duration to %d seconds", base))
 			}
 		}
 	}
@@ -139,7 +138,7 @@ func leaseCheckWait(s *Secret) time.Duration {
 	if _, ok := s.Data["rotation_period"]; ok && s.LeaseID == "" {
 		if ttlInterface, ok := s.Data["ttl"]; ok {
 			if ttlData, err := ttlInterface.(json.Number).Int64(); err == nil {
-				log.Printf("[DEBUG] Found rotation_period and set lease duration to %d seconds", ttlData)
+				logger.Debug(fmt.Sprintf("Found rotation_period and set lease duration to %d seconds", ttlData))
 				// Add a second for cushion
 				base = int(ttlData) + 1
 				rotatingSecret = true
@@ -175,9 +174,9 @@ func leaseCheckWait(s *Secret) time.Duration {
 }
 
 // printVaultWarnings prints warnings for a given dependency.
-func printVaultWarnings(d Dependency, warnings []string) {
+func printVaultWarnings(d Dependency, warnings []string, logger hclog.Logger) {
 	for _, w := range warnings {
-		log.Printf("[WARN] %s: %s", d, w)
+		logger.Warn(fmt.Sprintf("%s: %s", d, w))
 	}
 }
 

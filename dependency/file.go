@@ -3,11 +3,11 @@ package dependency
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -43,19 +43,19 @@ func NewFileQuery(s string) (*FileQuery, error) {
 
 // Fetch retrieves this dependency and returns the result or any errors that
 // occur in the process.
-func (d *FileQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
-	log.Printf("[TRACE] %s: READ %s", d, d.path)
+func (d *FileQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
+	logger.Trace(fmt.Sprintf("%s: READ %s", d, d.path))
 
 	select {
 	case <-d.stopCh:
-		log.Printf("[TRACE] %s: stopped", d)
+		logger.Trace(fmt.Sprintf("%s: stopped", d))
 		return "", nil, ErrStopped
 	case r := <-d.watch(d.stat):
 		if r.err != nil {
 			return "", nil, errors.Wrap(r.err, d.String())
 		}
 
-		log.Printf("[TRACE] %s: reported change", d)
+		logger.Trace(fmt.Sprintf("%s: reported change", d))
 
 		data, err := ioutil.ReadFile(d.path)
 		if err != nil {

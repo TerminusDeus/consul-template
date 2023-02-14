@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -12,6 +11,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vault/sdk/helper/logging"
 )
 
 func init() {
@@ -65,6 +67,7 @@ type Child struct {
 	stopLock sync.RWMutex
 	stopCh   chan struct{}
 	stopped  bool
+	logger   hclog.Logger
 }
 
 // NewInput is input to the NewChild function.
@@ -137,6 +140,11 @@ func New(i *NewInput) (*Child, error) {
 		stopCh:       make(chan struct{}, 1),
 	}
 
+	child.logger = hclog.New(&hclog.LoggerOptions{
+		Name:       "child",
+		JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
+	})
+
 	return child, nil
 }
 
@@ -169,7 +177,7 @@ func (c *Child) Command() string {
 // as the second error argument, but any errors returned by the command after
 // execution will be returned as a non-zero value over the exit code channel.
 func (c *Child) Start() error {
-	log.Printf("[INFO] (child) spawning: %s", c.Command())
+	c.logger.Info(fmt.Sprintf("spawning: %s", c.Command()))
 	c.Lock()
 	defer c.Unlock()
 	return c.start()
@@ -178,7 +186,7 @@ func (c *Child) Start() error {
 // Signal sends the signal to the child process, returning any errors that
 // occur.
 func (c *Child) Signal(s os.Signal) error {
-	log.Printf("[INFO] (child) receiving signal %q", s.String())
+	c.logger.Info(fmt.Sprintf("receiving signal %q", s.String()))
 	c.RLock()
 	defer c.RUnlock()
 	return c.signal(s)
@@ -189,7 +197,7 @@ func (c *Child) Signal(s os.Signal) error {
 // replaces the process attached to this Child.
 func (c *Child) Reload() error {
 	if c.reloadSignal == nil {
-		log.Printf("[INFO] (child) restarting process")
+		c.logger.Info("restarting process")
 
 		// Take a full lock because start is going to replace the process. We also
 		// want to make sure that no other routines attempt to send reload signals
@@ -201,7 +209,7 @@ func (c *Child) Reload() error {
 		return c.start()
 	}
 
-	log.Printf("[INFO] (child) reloading process")
+	c.logger.Info("reloading process")
 
 	// We only need a read lock here because neither the process nor the exit
 	// channel are changing.
@@ -220,7 +228,7 @@ func (c *Child) Reload() error {
 // does not return any errors because it guarantees the process will be dead by
 // the return of the function call.
 func (c *Child) Kill() {
-	log.Printf("[INFO] (child) killing process")
+	c.logger.Info("killing process")
 	c.Lock()
 	defer c.Unlock()
 	c.kill(false)
@@ -242,7 +250,7 @@ func (c *Child) StopImmediately() {
 }
 
 func (c *Child) internalStop(immediately bool) {
-	log.Printf("[INFO] (child) stopping process")
+	c.logger.Info("stopping process")
 
 	c.Lock()
 	defer c.Unlock()
@@ -250,7 +258,7 @@ func (c *Child) internalStop(immediately bool) {
 	c.stopLock.Lock()
 	defer c.stopLock.Unlock()
 	if c.stopped {
-		log.Printf("[WARN] (child) already stopped")
+		c.logger.Info("already stopped")
 		return
 	}
 	c.kill(immediately)
@@ -370,10 +378,10 @@ func (c *Child) reload() error {
 func (c *Child) kill(immediately bool) {
 
 	if !c.running() {
-		log.Printf("[DEBUG] (child) Kill() called but process dead; not waiting for splay.")
+		c.logger.Debug("Kill() called but process dead; not waiting for splay.")
 		return
 	} else if immediately {
-		log.Printf("[DEBUG] (child) Kill() called but performing immediate shutdown; not waiting for splay.")
+		c.logger.Debug("Kill() called but performing immediate shutdown; not waiting for splay.")
 	} else {
 		select {
 		case <-c.stopCh:
@@ -427,7 +435,7 @@ func (c *Child) randomSplay() <-chan time.Time {
 	offset := rand.Int63n(ns)
 	t := time.Duration(offset)
 
-	log.Printf("[DEBUG] (child) waiting %.2fs for random splay", t.Seconds())
+	c.logger.Debug(fmt.Sprintf("waiting %.2fs for random splay", t.Seconds()))
 
 	return time.After(t)
 }

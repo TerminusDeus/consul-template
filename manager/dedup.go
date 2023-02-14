@@ -5,7 +5,6 @@ import (
 	"compress/lzw"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"path"
 	"sync"
 	"time"
@@ -17,6 +16,8 @@ import (
 	"github.com/TerminusDeus/consul-template/template"
 	"github.com/TerminusDeus/consul-template/version"
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/vault/sdk/helper/logging"
 )
 
 var (
@@ -101,12 +102,18 @@ type DedupManager struct {
 	stop     bool
 	stopCh   chan struct{}
 	stopLock sync.Mutex
+
+	logger hclog.Logger
 }
 
 // NewDedupManager creates a new Dedup manager
-func NewDedupManager(config *config.DedupConfig, clients *dep.ClientSet, brain *template.Brain, templates []*template.Template) (*DedupManager, error) {
+func NewDedupManager(config *config.DedupConfig, clients *dep.ClientSet, brain *template.Brain, templates []*template.Template, logger hclog.Logger) (*DedupManager, error) {
 	d := &DedupManager{
-		config:    config,
+		config: config,
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:       "dedup",
+			JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
+		}),
 		clients:   clients,
 		brain:     brain,
 		templates: templates,
@@ -120,7 +127,7 @@ func NewDedupManager(config *config.DedupConfig, clients *dep.ClientSet, brain *
 
 // Start is used to start the de-duplication manager
 func (d *DedupManager) Start() error {
-	log.Printf("[INFO] (dedup) starting de-duplication manager")
+	d.logger.Info("starting de-duplication manager")
 
 	client := d.clients.Consul()
 	go d.createSession(client)
@@ -140,7 +147,7 @@ func (d *DedupManager) Stop() error {
 		return nil
 	}
 
-	log.Printf("[INFO] (dedup) stopping de-duplication manager")
+	d.logger.Info("stopping de-duplication manager")
 	d.stop = true
 	close(d.stopCh)
 	d.wg.Wait()
@@ -150,7 +157,7 @@ func (d *DedupManager) Stop() error {
 // createSession is used to create and maintain a session to Consul
 func (d *DedupManager) createSession(client *consulapi.Client) {
 START:
-	log.Printf("[INFO] (dedup) attempting to create session")
+	d.logger.Info("attempting to create session")
 	session := client.Session()
 	sessionCh := make(chan struct{})
 	ttl := fmt.Sprintf("%.6fs", float64(*d.config.TTL)/float64(time.Second))
@@ -162,10 +169,10 @@ START:
 	}
 	id, _, err := session.Create(se, nil)
 	if err != nil {
-		log.Printf("[ERR] (dedup) failed to create session: %v", err)
+		d.logger.Error(fmt.Sprintf("failed to create session: %s", err.Error()))
 		goto WAIT
 	}
-	log.Printf("[INFO] (dedup) created session %s", id)
+	d.logger.Info(fmt.Sprintf("created session %s", id))
 
 	// Attempt to lock each template
 	for _, t := range d.templates {
@@ -175,7 +182,7 @@ START:
 
 	// Renew our session periodically
 	if err := session.RenewPeriodic("15s", id, nil, d.stopCh); err != nil {
-		log.Printf("[ERR] (dedup) failed to renew session: %v", err)
+		d.logger.Error(fmt.Sprintf("failed to renew session: %v", err))
 	}
 	close(sessionCh)
 	d.wg.Wait()
@@ -241,8 +248,7 @@ func (d *DedupManager) UpdateDeps(t *template.Template, deps []dep.Dependency) e
 	existing, ok := d.lastWrite[t]
 	d.lastWriteLock.RUnlock()
 	if ok && existing == hash {
-		log.Printf("[INFO] (dedup) de-duplicate data '%s' already current",
-			dataPath)
+		d.logger.Info(fmt.Sprintf("de-duplicate data '%s' already current", dataPath))
 		return nil
 	}
 
@@ -265,7 +271,7 @@ func (d *DedupManager) UpdateDeps(t *template.Template, deps []dep.Dependency) e
 	if _, err := client.KV().Put(&kvPair, nil); err != nil {
 		return fmt.Errorf("failed to write '%s': %v", dataPath, err)
 	}
-	log.Printf("[INFO] (dedup) updated de-duplicate data '%s'", dataPath)
+	d.logger.Info(fmt.Sprintf("updated de-duplicate data '%s'", dataPath))
 	d.lastWriteLock.Lock()
 	d.lastWrite[t] = hash
 	d.lastWriteLock.Unlock()
@@ -303,7 +309,7 @@ func (d *DedupManager) setLeader(tmpl *template.Template, lockCh <-chan struct{}
 }
 
 func (d *DedupManager) watchTemplate(client *consulapi.Client, t *template.Template) {
-	log.Printf("[INFO] (dedup) starting watch for template hash %s", t.ID())
+	d.logger.Info(fmt.Sprintf("starting watch for template hash %s", t.ID()))
 	path := path.Join(*d.config.Prefix, t.ID(), "data")
 
 	// Determine if stale queries are allowed
@@ -343,10 +349,10 @@ START:
 	}
 
 	// Block for updates on the data key
-	log.Printf("[INFO] (dedup) listing data for template hash %s", t.ID())
+	d.logger.Info(fmt.Sprintf("listing data for template hash %s", t.ID()))
 	pair, meta, err := client.KV().Get(path, opts)
 	if err != nil {
-		log.Printf("[ERR] (dedup) failed to get '%s': %v", path, err)
+		d.logger.Error(fmt.Sprintf("failed to get '%s': %v", path, err))
 		select {
 		case <-time.After(listRetry):
 			goto START
@@ -366,7 +372,7 @@ START:
 	// If we've exceeded the maximum staleness, retry without stale
 	if allowStale && meta.LastContact > *d.config.MaxStale {
 		allowStale = false
-		log.Printf("[DEBUG] (dedup) %s stale data (last contact exceeded max_stale)", path)
+		d.logger.Debug(fmt.Sprintf("%s stale data (last contact exceeded max_stale)", path))
 		goto START
 	}
 
@@ -376,12 +382,12 @@ START:
 	}
 
 	if meta.LastIndex == lastIndex {
-		log.Printf("[TRACE] (dedup) %s no new data (index was the same)", path)
+		d.logger.Trace(fmt.Sprintf("%s no new data (index was the same)", path))
 		goto START
 	}
 
 	if meta.LastIndex < lastIndex {
-		log.Printf("[TRACE] (dedup) %s had a lower index, resetting", path)
+		d.logger.Trace(fmt.Sprintf("%s had a lower index, resetting", path))
 		lastIndex = 0
 		goto START
 	}
@@ -392,7 +398,7 @@ START:
 		data = pair.Value
 	}
 	if bytes.Equal(lastData, data) {
-		log.Printf("[TRACE] (dedup) %s no new data (contents were the same)", path)
+		d.logger.Trace(fmt.Sprintf("%s no new data (contents were the same)", path))
 		goto START
 	}
 	lastData = data
@@ -428,17 +434,16 @@ func (d *DedupManager) parseData(path string, raw []byte) {
 	// Decode the data
 	var td templateData
 	if err := dec.Decode(&td); err != nil {
-		log.Printf("[ERR] (dedup) failed to decode '%s': %v",
-			path, err)
+		d.logger.Error(fmt.Sprintf("failed to decode '%s': %v", path, err))
 		return
 	}
 	if td.Version != version.Version {
-		log.Printf("[WARN] (dedup) created with different version (%s vs %s)",
-			td.Version, version.Version)
+		d.logger.Warn(fmt.Sprintf("created with different version (%s vs %s)",
+			td.Version, version.Version))
 		return
 	}
-	log.Printf("[INFO] (dedup) loading %d dependencies from '%s'",
-		len(td.Data), path)
+	d.logger.Info(fmt.Sprintf("loading %d dependencies from '%s'",
+		len(td.Data), path))
 
 	// Update the data in the brain
 	for hashCode, value := range td.Data {
@@ -455,7 +460,7 @@ func (d *DedupManager) parseData(path string, raw []byte) {
 func (d *DedupManager) attemptLock(client *consulapi.Client, session string, sessionCh chan struct{}, t *template.Template) {
 	defer d.wg.Done()
 	for {
-		log.Printf("[INFO] (dedup) attempting lock for template hash %s", t.ID())
+		d.logger.Info(fmt.Sprintf("attempting lock for template hash %s", t.ID()))
 		basePath := path.Join(*d.config.Prefix, t.ID())
 		lopts := &consulapi.LockOptions{
 			Key:              path.Join(basePath, "data"),
@@ -467,19 +472,17 @@ func (d *DedupManager) attemptLock(client *consulapi.Client, session string, ses
 		}
 		lock, err := client.LockOpts(lopts)
 		if err != nil {
-			log.Printf("[ERR] (dedup) failed to create lock '%s': %v",
-				lopts.Key, err)
+			d.logger.Error(fmt.Sprintf("failed to create lock '%s': %v", lopts.Key, err))
 			return
 		}
 
 		var retryCh <-chan time.Time
 		leaderCh, err := lock.Lock(sessionCh)
 		if err != nil {
-			log.Printf("[ERR] (dedup) failed to acquire lock '%s': %v",
-				lopts.Key, err)
+			d.logger.Error(fmt.Sprintf("failed to acquire lock '%s': %v", lopts.Key, err))
 			retryCh = time.After(lockRetry)
 		} else {
-			log.Printf("[INFO] (dedup) acquired lock '%s'", lopts.Key)
+			d.logger.Info(fmt.Sprintf("acquired lock '%s'", lopts.Key))
 			d.setLeader(t, leaderCh)
 		}
 
@@ -488,22 +491,22 @@ func (d *DedupManager) attemptLock(client *consulapi.Client, session string, ses
 			retryCh = nil
 			continue
 		case <-leaderCh:
-			log.Printf("[WARN] (dedup) lost lock ownership '%s'", lopts.Key)
 			d.setLeader(t, nil)
+			d.logger.Warn(fmt.Sprintf("lost lock ownership '%s'", lopts.Key))
 			continue
 		case <-sessionCh:
-			log.Printf("[INFO] (dedup) releasing session '%s'", lopts.Key)
+			d.logger.Info(fmt.Sprintf("releasing session '%s'", lopts.Key))
 			d.setLeader(t, nil)
 			_, err = client.Session().Destroy(session, nil)
 			if err != nil {
-				log.Printf("[ERROR] (dedup) failed destroying session '%s', %s", session, err)
+				d.logger.Error(fmt.Sprintf("failed destroying session '%s', %s", session, err))
 			}
 			return
 		case <-d.stopCh:
-			log.Printf("[INFO] (dedup) releasing lock '%s'", lopts.Key)
+			d.logger.Info(fmt.Sprintf("releasing lock '%s'", lopts.Key))
 			_, err = client.Session().Destroy(session, nil)
 			if err != nil {
-				log.Printf("[ERROR] (dedup) failed destroying session '%s', %s", session, err)
+				d.logger.Error(fmt.Sprintf("failed destroying session '%s', %s", session, err))
 			}
 			return
 		}

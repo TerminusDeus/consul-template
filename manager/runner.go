@@ -553,7 +553,7 @@ func (r *Runner) Run() error {
 	for _, tmpl := range r.templates {
 		event, err := r.runTemplate(tmpl, runCtx)
 		if err != nil {
-			return err
+			return fmt.Errorf("running template (id %s) failed: %s ", tmpl.ID(), err.Error())
 		}
 
 		// If there was a render event store it
@@ -957,7 +957,7 @@ func (r *Runner) init() error {
 		if r.config.Once {
 			r.logger.Info("disabling de-duplication in once mode")
 		} else {
-			r.dedup, err = NewDedupManager(r.config.Dedup, clients, r.brain, r.templates)
+			r.dedup, err = NewDedupManager(r.config.Dedup, clients, r.brain, r.templates, r.logger)
 			if err != nil {
 				return err
 			}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -127,7 +128,7 @@ func TestStringToWaitDurationHookFunc(t *testing.T) {
 func TestConsulStringToStructFunc(t *testing.T) {
 	t.Parallel()
 
-	f := ConsulStringToStructFunc()
+	f := ConsulStringToStructFunc(hclog.Default())
 	strType := reflect.TypeOf("")
 	consulType := reflect.TypeOf(ConsulConfig{})
 

@@ -13,6 +13,7 @@ import (
 	"github.com/TerminusDeus/consul-template/test"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/testutil"
+	"github.com/hashicorp/go-hclog"
 	vapi "github.com/hashicorp/vault/api"
 )
 
@@ -188,7 +189,7 @@ func (v *vaultServer) CreateSecret(path string, data map[string]interface{},
 	if err != nil {
 		return err
 	}
-	_, err = q.writeSecret(testClients, &QueryOptions{})
+	_, err = q.writeSecret(testClients, &QueryOptions{}, hclog.Default())
 	if err != nil {
 		fmt.Println(err)
 	}

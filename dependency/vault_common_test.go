@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 func init() {
@@ -13,13 +15,13 @@ func init() {
 
 func TestVaultRenewDuration(t *testing.T) {
 	renewable := Secret{LeaseDuration: 100, Renewable: true}
-	renewableDur := leaseCheckWait(&renewable).Seconds()
+	renewableDur := leaseCheckWait(&renewable, hclog.Default()).Seconds()
 	if renewableDur < 16 || renewableDur >= 34 {
 		t.Fatalf("renewable duration is not within 1/6 to 1/3 of lease duration: %f", renewableDur)
 	}
 
 	nonRenewable := Secret{LeaseDuration: 100}
-	nonRenewableDur := leaseCheckWait(&nonRenewable).Seconds()
+	nonRenewableDur := leaseCheckWait(&nonRenewable, hclog.Default()).Seconds()
 	if nonRenewableDur < 85 || nonRenewableDur > 95 {
 		t.Fatalf("renewable duration is not within 85%% to 95%% of lease duration: %f", nonRenewableDur)
 	}
@@ -30,7 +32,7 @@ func TestVaultRenewDuration(t *testing.T) {
 	}
 
 	nonRenewableRotated := Secret{LeaseDuration: 100, Data: data}
-	nonRenewableRotatedDur := leaseCheckWait(&nonRenewableRotated).Seconds()
+	nonRenewableRotatedDur := leaseCheckWait(&nonRenewableRotated, hclog.Default()).Seconds()
 
 	// We expect a 1 second cushion
 	if nonRenewableRotatedDur != 31 {
@@ -43,7 +45,7 @@ func TestVaultRenewDuration(t *testing.T) {
 	}
 
 	nonRenewableRotated = Secret{LeaseDuration: 100, Data: data}
-	nonRenewableRotatedDur = leaseCheckWait(&nonRenewableRotated).Seconds()
+	nonRenewableRotatedDur = leaseCheckWait(&nonRenewableRotated, hclog.Default()).Seconds()
 
 	// We expect a 1 second cushion
 	if nonRenewableRotatedDur != 6 {
@@ -59,7 +61,7 @@ func TestVaultRenewDuration(t *testing.T) {
 	}
 
 	nonRenewableCert := Secret{LeaseDuration: 100, Data: data}
-	nonRenewableCertDur := leaseCheckWait(&nonRenewableCert).Seconds()
+	nonRenewableCertDur := leaseCheckWait(&nonRenewableCert, hclog.Default()).Seconds()
 	if nonRenewableCertDur < 85 || nonRenewableCertDur > 95 {
 		t.Fatalf("non renewable certificate duration is not within 85%% to 95%%: %f", nonRenewableCertDur)
 	}
@@ -73,7 +75,7 @@ func TestVaultRenewDuration(t *testing.T) {
 			}
 
 			nonRenewableSecretID := Secret{LeaseDuration: 100, Data: data}
-			nonRenewableSecretIDDur := leaseCheckWait(&nonRenewableSecretID).Seconds()
+			nonRenewableSecretIDDur := leaseCheckWait(&nonRenewableSecretID, hclog.Default()).Seconds()
 
 			if nonRenewableSecretIDDur < 0.85*(60+1) || nonRenewableSecretIDDur > 0.95*(60+1) {
 				t.Fatalf("renewable duration is not within 85%% to 95%% of lease duration: %f", nonRenewableSecretIDDur)
@@ -89,7 +91,7 @@ func TestVaultRenewDuration(t *testing.T) {
 			}
 
 			nonRenewableSecretID := Secret{LeaseDuration: leaseDuration, Data: data}
-			nonRenewableSecretIDDur := leaseCheckWait(&nonRenewableSecretID).Seconds()
+			nonRenewableSecretIDDur := leaseCheckWait(&nonRenewableSecretID, hclog.Default()).Seconds()
 
 			if nonRenewableSecretIDDur < 0.85*(leaseDuration+1) || nonRenewableSecretIDDur > 0.95*(leaseDuration+1) {
 				t.Fatalf("renewable duration is not within 85%% to 95%% of lease duration: %f", nonRenewableSecretIDDur)
@@ -104,7 +106,7 @@ func TestVaultRenewDuration(t *testing.T) {
 			}
 
 			nonRenewableSecretID := Secret{LeaseDuration: leaseDuration, Data: data}
-			nonRenewableSecretIDDur := leaseCheckWait(&nonRenewableSecretID).Seconds()
+			nonRenewableSecretIDDur := leaseCheckWait(&nonRenewableSecretID, hclog.Default()).Seconds()
 
 			if nonRenewableSecretIDDur < 0.85*(leaseDuration+1) || nonRenewableSecretIDDur > 0.95*(leaseDuration+1) {
 				t.Fatalf("renewable duration is not within 85%% to 95%% of lease duration: %f", nonRenewableSecretIDDur)

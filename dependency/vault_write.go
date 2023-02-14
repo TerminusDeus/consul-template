@@ -4,12 +4,12 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 )
@@ -51,7 +51,7 @@ func NewVaultWriteQuery(s string, d map[string]interface{}) (*VaultWriteQuery, e
 }
 
 // Fetch queries the Vault API
-func (d *VaultWriteQuery) Fetch(clients *ClientSet, opts *QueryOptions,
+func (d *VaultWriteQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger,
 ) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
@@ -67,14 +67,14 @@ func (d *VaultWriteQuery) Fetch(clients *ClientSet, opts *QueryOptions,
 	firstRun := d.secret == nil
 
 	if !firstRun && vaultSecretRenewable(d.secret) {
-		err := renewSecret(clients, d)
+		err := renewSecret(clients, d, logger)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, d.String())
 		}
 	}
 
 	opts = opts.Merge(&QueryOptions{})
-	vaultSecret, err := d.writeSecret(clients, opts)
+	vaultSecret, err := d.writeSecret(clients, opts, logger)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
 	}
@@ -84,14 +84,14 @@ func (d *VaultWriteQuery) Fetch(clients *ClientSet, opts *QueryOptions,
 		return respWithMetadata(d.secret)
 	}
 
-	printVaultWarnings(d, vaultSecret.Warnings)
+	printVaultWarnings(d, vaultSecret.Warnings, logger)
 	d.vaultSecret = vaultSecret
 	// cloned secret which will be exposed to the template
 	d.secret = transformSecret(vaultSecret)
 
 	if !vaultSecretRenewable(d.secret) {
-		dur := leaseCheckWait(d.secret)
-		log.Printf("[TRACE] %s: non-renewable secret, set sleep for %s", d, dur)
+		dur := leaseCheckWait(d.secret, logger)
+		logger.Trace(fmt.Sprintf("%s: non-renewable secret, set sleep for %s", d, dur))
 		d.sleepCh <- dur
 	}
 
@@ -145,17 +145,17 @@ func sha1Map(m map[string]interface{}) string {
 	return fmt.Sprintf("%.4x", h.Sum(nil))
 }
 
-func (d *VaultWriteQuery) printWarnings(warnings []string) {
+func (d *VaultWriteQuery) printWarnings(warnings []string, logger hclog.Logger) {
 	for _, w := range warnings {
-		log.Printf("[WARN] %s: %s", d, w)
+		logger.Warn(fmt.Sprintf("%s: %s", d, w))
 	}
 }
 
-func (d *VaultWriteQuery) writeSecret(clients *ClientSet, opts *QueryOptions) (*api.Secret, error) {
-	log.Printf("[TRACE] %s: PUT %s", d, &url.URL{
+func (d *VaultWriteQuery) writeSecret(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (*api.Secret, error) {
+	logger.Trace(fmt.Sprintf("%s: PUT %s", d, &url.URL{
 		Path:     "/v1/" + d.path,
 		RawQuery: opts.String(),
-	})
+	}))
 
 	path := d.path
 	data := d.data

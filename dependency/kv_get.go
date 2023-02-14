@@ -2,10 +2,10 @@ package dependency
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -41,7 +41,7 @@ func NewKVGetQuery(s string) (*KVGetQuery, error) {
 }
 
 // Fetch queries the Consul API defined by the given client.
-func (d *KVGetQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *KVGetQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
 		return nil, nil, ErrStopped
@@ -52,10 +52,10 @@ func (d *KVGetQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{},
 		Datacenter: d.dc,
 	})
 
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/kv/" + d.key,
 		RawQuery: opts.String(),
-	})
+	}))
 
 	pair, qm, err := clients.Consul().KV().Get(d.key, opts.ToConsulOpts())
 	if err != nil {
@@ -69,12 +69,12 @@ func (d *KVGetQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{},
 	}
 
 	if pair == nil {
-		log.Printf("[TRACE] %s: returned nil", d)
+		logger.Trace(fmt.Sprintf("%s: returned nil", d))
 		return nil, rm, nil
 	}
 
 	value := string(pair.Value)
-	log.Printf("[TRACE] %s: returned %q", d, value)
+	logger.Trace(fmt.Sprintf("%s: returned %q", d, value))
 	return value, rm, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-hclog"
 )
 
 const (
@@ -32,7 +33,7 @@ const (
 // Dependency is an interface for a dependency that Consul Template is capable
 // of watching.
 type Dependency interface {
-	Fetch(*ClientSet, *QueryOptions) (interface{}, *ResponseMetadata, error)
+	Fetch(*ClientSet, *QueryOptions, hclog.Logger) (interface{}, *ResponseMetadata, error)
 	CanShare() bool
 	String() string
 	Stop()

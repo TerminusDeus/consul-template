@@ -3,11 +3,11 @@ package dependency
 import (
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 	"sort"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -66,7 +66,7 @@ func NewCatalogNodeQuery(s string) (*CatalogNodeQuery, error) {
 
 // Fetch queries the Consul API defined by the given client and returns a
 // of CatalogNode object.
-func (d *CatalogNodeQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *CatalogNodeQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
 		return nil, nil, ErrStopped
@@ -81,7 +81,7 @@ func (d *CatalogNodeQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interf
 	name := d.name
 
 	if name == "" {
-		log.Printf("[TRACE] %s: getting local agent name", d)
+		logger.Trace(fmt.Sprintf("%s: getting local agent name", d))
 		var err error
 		name, err = clients.Consul().Agent().NodeName()
 		if err != nil {
@@ -89,24 +89,23 @@ func (d *CatalogNodeQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interf
 		}
 	}
 
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/catalog/node/" + name,
 		RawQuery: opts.String(),
-	})
+	}))
 	node, qm, err := clients.Consul().Catalog().Node(name, opts.ToConsulOpts())
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
-	log.Printf("[TRACE] %s: returned response", d)
-
+	logger.Trace(fmt.Sprintf("%s: returned response", d))
 	rm := &ResponseMetadata{
 		LastIndex:   qm.LastIndex,
 		LastContact: qm.LastContact,
 	}
 
 	if node == nil {
-		log.Printf("[WARN] %s: no node exists with the name %q", d, name)
+		logger.Warn(fmt.Sprintf("%s: no node exists with the name %q", d, name))
 		var node CatalogNode
 		return &node, rm, nil
 	}

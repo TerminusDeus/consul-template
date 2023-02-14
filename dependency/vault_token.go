@@ -1,6 +1,7 @@
 package dependency
 
 import (
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 )
@@ -34,7 +35,7 @@ func NewVaultTokenQuery(token string) (*VaultTokenQuery, error) {
 }
 
 // Fetch queries the Vault API
-func (d *VaultTokenQuery) Fetch(clients *ClientSet, opts *QueryOptions,
+func (d *VaultTokenQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger,
 ) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
@@ -43,7 +44,7 @@ func (d *VaultTokenQuery) Fetch(clients *ClientSet, opts *QueryOptions,
 	}
 
 	if vaultSecretRenewable(d.secret) {
-		err := renewSecret(clients, d)
+		err := renewSecret(clients, d, logger)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, d.String())
 		}

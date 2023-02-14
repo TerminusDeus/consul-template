@@ -3,15 +3,16 @@ package dependency
 import (
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	consulapi "github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-hclog"
 	rootcerts "github.com/hashicorp/go-rootcerts"
 	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/hashicorp/vault/sdk/helper/logging"
 )
 
 // ClientSet is a collection of clients that dependencies use to communicate
@@ -21,6 +22,7 @@ type ClientSet struct {
 
 	vault  *vaultClient
 	consul *consulClient
+	logger hclog.Logger
 }
 
 // consulClient is a wrapper around a real Consul API client.
@@ -85,7 +87,11 @@ type CreateVaultClientInput struct {
 
 // NewClientSet creates a new client set that is ready to accept clients.
 func NewClientSet() *ClientSet {
-	return &ClientSet{}
+	return &ClientSet{
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:       "clients",
+			JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
+		})}
 }
 
 // CreateConsulClient creates a new Consul API client from the given input.
@@ -166,7 +172,7 @@ func (c *ClientSet) CreateConsulClient(i *CreateConsulClientInput) error {
 			tlsConfig.InsecureSkipVerify = false
 		}
 		if !i.SSLVerify {
-			log.Printf("[WARN] (clients) disabling consul SSL verification")
+			c.logger.Warn("disabling consul SSL verification")
 			tlsConfig.InsecureSkipVerify = true
 		}
 
@@ -254,7 +260,7 @@ func (c *ClientSet) CreateVaultClient(i *CreateVaultClientInput) error {
 			tlsConfig.InsecureSkipVerify = false
 		}
 		if !i.SSLVerify {
-			log.Printf("[WARN] (clients) disabling vault SSL verification")
+			c.logger.Warn("disabling vault SSL verification")
 			tlsConfig.InsecureSkipVerify = true
 		}
 

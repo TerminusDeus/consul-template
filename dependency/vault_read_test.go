@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -141,7 +142,7 @@ func TestVaultReadQuery_Fetch_KVv1(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			act, _, err := d.Fetch(clients, nil)
+			act, _, err := d.Fetch(clients, nil, hclog.Default())
 			if (err != nil) != tc.err {
 				t.Fatal(err)
 			}
@@ -167,7 +168,7 @@ func TestVaultReadQuery_Fetch_KVv1(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() {
 			for {
-				data, _, err := d.Fetch(clients, nil)
+				data, _, err := d.Fetch(clients, nil, hclog.Default())
 				if err != nil {
 					errCh <- err
 					return
@@ -203,7 +204,7 @@ func TestVaultReadQuery_Fetch_KVv1(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, qm, err := d.Fetch(clients, nil)
+		_, qm, err := d.Fetch(clients, nil, hclog.Default())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +213,7 @@ func TestVaultReadQuery_Fetch_KVv1(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() {
 			for {
-				data, _, err := d.Fetch(clients, &QueryOptions{WaitIndex: qm.LastIndex})
+				data, _, err := d.Fetch(clients, &QueryOptions{WaitIndex: qm.LastIndex}, hclog.Default())
 				if err != nil {
 					errCh <- err
 					return
@@ -235,7 +236,7 @@ func TestVaultReadQuery_Fetch_KVv1(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, qm, err := d.Fetch(clients, nil)
+		_, qm, err := d.Fetch(clients, nil, hclog.Default())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +244,7 @@ func TestVaultReadQuery_Fetch_KVv1(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() {
 			_, _, err := d.Fetch(clients,
-				&QueryOptions{WaitIndex: qm.LastIndex})
+				&QueryOptions{WaitIndex: qm.LastIndex}, hclog.Default())
 			if err != nil {
 				errCh <- err
 			}
@@ -382,7 +383,7 @@ func TestVaultReadQuery_Fetch_KVv2(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			act, _, err := d.Fetch(clients, nil)
+			act, _, err := d.Fetch(clients, nil, hclog.Default())
 			if (err != nil) != tc.err {
 				t.Fatal(err)
 			}
@@ -403,7 +404,7 @@ func TestVaultReadQuery_Fetch_KVv2(t *testing.T) {
 		d, err := NewVaultReadQuery(secretsPath + "/metadata/foo/bar")
 		require.NoError(t, err)
 
-		act, _, err := d.Fetch(clients, nil)
+		act, _, err := d.Fetch(clients, nil, hclog.Default())
 		require.NoError(t, err)
 		require.NotNil(t, act)
 
@@ -431,7 +432,7 @@ func TestVaultReadQuery_Fetch_KVv2(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, err = d.Fetch(clients, nil)
+		_, _, err = d.Fetch(clients, nil, hclog.Default())
 		if err == nil {
 			t.Fatal("Nil received when error expected")
 		}
@@ -452,7 +453,7 @@ func TestVaultReadQuery_Fetch_KVv2(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() {
 			for {
-				data, _, err := d.Fetch(clients, nil)
+				data, _, err := d.Fetch(clients, nil, hclog.Default())
 				if err != nil {
 					errCh <- err
 					return
@@ -490,7 +491,7 @@ func TestVaultReadQuery_Fetch_KVv2(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, qm, err := d.Fetch(clients, nil)
+			_, qm, err := d.Fetch(clients, nil, hclog.Default())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -499,7 +500,7 @@ func TestVaultReadQuery_Fetch_KVv2(t *testing.T) {
 			errCh := make(chan error, 1)
 			go func() {
 				for {
-					data, _, err := d.Fetch(clients, &QueryOptions{WaitIndex: qm.LastIndex})
+					data, _, err := d.Fetch(clients, &QueryOptions{WaitIndex: qm.LastIndex}, hclog.Default())
 					if err != nil {
 						errCh <- err
 						return
@@ -562,7 +563,7 @@ func TestVaultReadQuery_Fetch_PKI_Anonymous(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	act, _, err := d.Fetch(anonClient, nil)
+	act, _, err := d.Fetch(anonClient, nil, hclog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +626,7 @@ func TestVaultReadQuery_Fetch_NonSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	act, _, err := d.Fetch(anonClient, nil)
+	act, _, err := d.Fetch(anonClient, nil, hclog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}

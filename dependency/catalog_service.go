@@ -3,10 +3,10 @@ package dependency
 import (
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -67,7 +67,7 @@ func NewCatalogServiceQuery(s string) (*CatalogServiceQuery, error) {
 
 // Fetch queries the Consul API defined by the given client and returns a slice
 // of CatalogService objects.
-func (d *CatalogServiceQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *CatalogServiceQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
 		return nil, nil, ErrStopped
@@ -88,14 +88,14 @@ func (d *CatalogServiceQuery) Fetch(clients *ClientSet, opts *QueryOptions) (int
 		q.Set("tag", d.tag)
 		u.RawQuery = q.Encode()
 	}
-	log.Printf("[TRACE] %s: GET %s", d, u)
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, u))
 
 	entries, qm, err := clients.Consul().Catalog().Service(d.name, d.tag, opts.ToConsulOpts())
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
-	log.Printf("[TRACE] %s: returned %d results", d, len(entries))
+	logger.Trace(fmt.Sprintf("%s: returned %d results", d, len(entries)))
 
 	var list []*CatalogService
 	for _, s := range entries {

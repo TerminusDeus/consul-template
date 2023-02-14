@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -11,7 +12,7 @@ func TestConnectCAQuery_Fetch(t *testing.T) {
 	t.Parallel()
 
 	d := NewConnectCAQuery()
-	raw, _, err := d.Fetch(testClients, nil)
+	raw, _, err := d.Fetch(testClients, nil, hclog.Default())
 	assert.NoError(t, err)
 	act := raw.([]*api.CARoot)
 	if assert.Len(t, act, 1) {

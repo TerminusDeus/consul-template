@@ -2,12 +2,12 @@ package dependency
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
 	"github.com/pkg/errors"
 )
@@ -54,7 +54,7 @@ func NewVaultReadQuery(s string) (*VaultReadQuery, error) {
 }
 
 // Fetch queries the Vault API
-func (d *VaultReadQuery) Fetch(clients *ClientSet, opts *QueryOptions,
+func (d *VaultReadQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger,
 ) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
@@ -70,32 +70,32 @@ func (d *VaultReadQuery) Fetch(clients *ClientSet, opts *QueryOptions,
 	firstRun := d.secret == nil
 
 	if !firstRun && vaultSecretRenewable(d.secret) {
-		err := renewSecret(clients, d)
+		err := renewSecret(clients, d, logger)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, d.String())
 		}
 	}
 
-	err := d.fetchSecret(clients, opts)
+	err := d.fetchSecret(clients, opts, logger)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
 	if !vaultSecretRenewable(d.secret) {
-		dur := leaseCheckWait(d.secret)
-		log.Printf("[TRACE] %s: non-renewable secret, set sleep for %s", d, dur)
+		dur := leaseCheckWait(d.secret, logger)
+		logger.Trace(fmt.Sprintf("%s: non-renewable secret, set sleep for %s", d, dur))
 		d.sleepCh <- dur
 	}
 
 	return respWithMetadata(d.secret)
 }
 
-func (d *VaultReadQuery) fetchSecret(clients *ClientSet, opts *QueryOptions,
+func (d *VaultReadQuery) fetchSecret(clients *ClientSet, opts *QueryOptions, logger hclog.Logger,
 ) error {
 	opts = opts.Merge(&QueryOptions{})
-	vaultSecret, err := d.readSecret(clients, opts)
+	vaultSecret, err := d.readSecret(clients, opts, logger)
 	if err == nil {
-		printVaultWarnings(d, vaultSecret.Warnings)
+		printVaultWarnings(d, vaultSecret.Warnings, logger)
 		d.vaultSecret = vaultSecret
 		// the cloned secret which will be exposed to the template
 		d.secret = transformSecret(vaultSecret)
@@ -134,15 +134,15 @@ func (d *VaultReadQuery) Type() Type {
 	return TypeVault
 }
 
-func (d *VaultReadQuery) readSecret(clients *ClientSet, opts *QueryOptions) (*api.Secret, error) {
+func (d *VaultReadQuery) readSecret(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (*api.Secret, error) {
 	vaultClient := clients.Vault()
 
 	// Check whether this secret refers to a KV v2 entry if we haven't yet.
 	if d.isKVv2 == nil {
 		mountPath, isKVv2, err := isKVv2(vaultClient, d.rawPath)
 		if err != nil {
-			log.Printf("[WARN] %s: failed to check if %s is KVv2, "+
-				"assume not: %s", d, d.rawPath, err)
+			logger.Warn(fmt.Sprintf("%s: failed to check if %s is KVv2, "+
+				"assume not: %s", d, d.rawPath, err))
 			isKVv2 = false
 			d.secretPath = d.rawPath
 		} else if isKVv2 {
@@ -154,10 +154,10 @@ func (d *VaultReadQuery) readSecret(clients *ClientSet, opts *QueryOptions) (*ap
 	}
 
 	queryString := d.queryValues.Encode()
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/" + d.secretPath,
 		RawQuery: queryString,
-	})
+	}))
 	vaultSecret, err := vaultClient.Logical().ReadWithData(d.secretPath,
 		d.queryValues)
 

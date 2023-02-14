@@ -1,12 +1,13 @@
 package dependency
 
 import (
-	"log"
+	"fmt"
 	"net/url"
 	"sort"
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -22,8 +23,7 @@ var (
 // CatalogDatacentersQuery is the dependency to query all datacenters
 type CatalogDatacentersQuery struct {
 	ignoreFailing bool
-
-	stopCh chan struct{}
+	stopCh        chan struct{}
 }
 
 // NewCatalogDatacentersQuery creates a new datacenter dependency.
@@ -36,13 +36,13 @@ func NewCatalogDatacentersQuery(ignoreFailing bool) (*CatalogDatacentersQuery, e
 
 // Fetch queries the Consul API defined by the given client and returns a slice
 // of strings representing the datacenters
-func (d *CatalogDatacentersQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *CatalogDatacentersQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	opts = opts.Merge(&QueryOptions{})
 
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/catalog/datacenters",
 		RawQuery: opts.String(),
-	})
+	}))
 
 	// This is pretty ghetto, but the datacenters endpoint does not support
 	// blocking queries, so we are going to "fake it until we make it". When we
@@ -54,7 +54,7 @@ func (d *CatalogDatacentersQuery) Fetch(clients *ClientSet, opts *QueryOptions) 
 	// This is probably okay given the frequency in which datacenters actually
 	// change, but is technically not edge-triggering.
 	if opts.WaitIndex != 0 {
-		log.Printf("[TRACE] %s: long polling for %s", d, CatalogDatacentersQuerySleepTime)
+		logger.Trace(fmt.Sprintf("%s: long polling for %s", d, CatalogDatacentersQuerySleepTime))
 
 		select {
 		case <-d.stopCh:
@@ -83,8 +83,7 @@ func (d *CatalogDatacentersQuery) Fetch(clients *ClientSet, opts *QueryOptions) 
 		}
 		result = dcs
 	}
-
-	log.Printf("[TRACE] %s: returned %d results", d, len(result))
+	logger.Trace(fmt.Sprintf("%s: returned %d results", d, len(result)))
 
 	sort.Strings(result)
 

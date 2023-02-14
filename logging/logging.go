@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	gsyslog "github.com/hashicorp/go-syslog"
 	"github.com/hashicorp/logutils"
+	"github.com/hashicorp/vault/sdk/helper/logging"
 )
 
 // Log time format
@@ -74,7 +76,10 @@ func newWriter(config *Config) (io.Writer, error) {
 	}
 
 	if config.Syslog {
-		log.Printf("[DEBUG] (logging) enabling syslog on %s", config.SyslogFacility)
+		hclog.New(&hclog.LoggerOptions{
+			Name:       "logging",
+			JSONFormat: logging.ParseEnvLogFormat() == logging.JSONFormat,
+		}).Debug(fmt.Sprintf("enabling syslog on %s", config.SyslogFacility))
 
 		l, err := gsyslog.NewLogger(gsyslog.LOG_NOTICE, config.SyslogFacility, config.SyslogName)
 		if err != nil {

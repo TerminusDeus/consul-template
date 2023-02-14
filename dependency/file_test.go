@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -94,7 +95,7 @@ func TestFileQuery_Fetch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			act, _, err := d.Fetch(nil, nil)
+			act, _, err := d.Fetch(nil, nil, hclog.Default())
 			if (err != nil) != tc.err {
 				t.Fatal(err)
 			}
@@ -118,7 +119,7 @@ func TestFileQuery_Fetch(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() {
 			for {
-				_, _, err := d.Fetch(nil, nil)
+				_, _, err := d.Fetch(nil, nil, hclog.Default())
 				if err != nil {
 					errCh <- err
 					return
@@ -157,7 +158,7 @@ func TestFileQuery_Fetch(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() {
 			for {
-				data, _, err := d.Fetch(nil, nil)
+				data, _, err := d.Fetch(nil, nil, hclog.Default())
 				if err != nil {
 					errCh <- err
 					return

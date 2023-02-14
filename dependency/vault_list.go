@@ -2,13 +2,13 @@ package dependency
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"path"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -39,7 +39,7 @@ func NewVaultListQuery(s string) (*VaultListQuery, error) {
 }
 
 // Fetch queries the Vault API
-func (d *VaultListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *VaultListQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
 		return nil, nil, ErrStopped
@@ -51,7 +51,7 @@ func (d *VaultListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interfac
 	// If this is not the first query, poll to simulate blocking-queries.
 	if opts.WaitIndex != 0 {
 		dur := VaultDefaultLeaseDuration
-		log.Printf("[TRACE] %s: long polling for %s", d, dur)
+		logger.Trace(fmt.Sprintf("%s: long polling for %s", d, dur))
 
 		select {
 		case <-d.stopCh:
@@ -71,10 +71,10 @@ func (d *VaultListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interfac
 
 	// If we got this far, we either didn't have a secret to renew, the secret was
 	// not renewable, or the renewal failed, so attempt a fresh list.
-	log.Printf("[TRACE] %s: LIST %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: LIST %s", d, &url.URL{
 		Path:     "/v1/" + secretsPath,
 		RawQuery: opts.String(),
-	})
+	}))
 	secret, err := clients.Vault().Logical().List(secretsPath)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
@@ -84,20 +84,20 @@ func (d *VaultListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interfac
 
 	// The secret could be nil if it does not exist.
 	if secret == nil || secret.Data == nil {
-		log.Printf("[TRACE] %s: no data", d)
+		logger.Trace(fmt.Sprintf("%s: no data", d))
 		return respWithMetadata(result)
 	}
 
 	// This is a weird thing that happened once...
 	keys, ok := secret.Data["keys"]
 	if !ok {
-		log.Printf("[TRACE] %s: no keys", d)
+		logger.Trace(fmt.Sprintf("%s: no keys", d))
 		return respWithMetadata(result)
 	}
 
 	list, ok := keys.([]interface{})
 	if !ok {
-		log.Printf("[TRACE] %s: not list", d)
+		logger.Trace(fmt.Sprintf("%s: not list", d))
 		return nil, nil, fmt.Errorf("%s: unexpected response", d)
 	}
 
@@ -110,7 +110,7 @@ func (d *VaultListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interfac
 	}
 	sort.Strings(result)
 
-	log.Printf("[TRACE] %s: returned %d results", d, len(result))
+	logger.Trace(fmt.Sprintf("%s: returned %d results", d, len(result)))
 
 	return respWithMetadata(result)
 }

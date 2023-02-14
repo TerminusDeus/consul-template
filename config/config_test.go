@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/vault/api"
 )
 
@@ -1559,7 +1560,7 @@ func TestParse(t *testing.T) {
 
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d_%s", i, tc.name), func(t *testing.T) {
-			c, err := Parse(tc.i)
+			c, err := Parse(tc.i, hclog.Default())
 			if (err != nil) != tc.err {
 				t.Fatal(err)
 			}
@@ -2026,7 +2027,7 @@ func TestFromPath(t *testing.T) {
 
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d_%s", i, tc.name), func(t *testing.T) {
-			c, err := FromPath(tc.path)
+			c, err := FromPath(tc.path, hclog.Default())
 			if (err != nil) != tc.err {
 				t.Fatal(err)
 			}

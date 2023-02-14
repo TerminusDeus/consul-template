@@ -12,6 +12,7 @@ import (
 	"github.com/TerminusDeus/consul-template/template"
 	"github.com/TerminusDeus/consul-template/test"
 	"github.com/hashicorp/consul/sdk/testutil"
+	"github.com/hashicorp/go-hclog"
 )
 
 var testConsul *testutil.TestServer
@@ -65,7 +66,7 @@ func TestMain(m *testing.M) {
 func testDedupManager(t *testing.T, tmpls []*template.Template) *DedupManager {
 	brain := template.NewBrain()
 	dedupConfig := config.TestConfig(nil).Dedup
-	dedup, err := NewDedupManager(dedupConfig, testClients, brain, tmpls)
+	dedup, err := NewDedupManager(dedupConfig, testClients, brain, tmpls, hclog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}

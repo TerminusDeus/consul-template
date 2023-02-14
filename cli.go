@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -13,10 +12,13 @@ import (
 
 	"github.com/TerminusDeus/consul-template/config"
 	"github.com/TerminusDeus/consul-template/logging"
+	hlogging "github.com/hashicorp/vault/sdk/helper/logging"
+
 	"github.com/TerminusDeus/consul-template/manager"
 	"github.com/TerminusDeus/consul-template/service_os"
 	"github.com/TerminusDeus/consul-template/signals"
 	"github.com/TerminusDeus/consul-template/version"
+	"github.com/hashicorp/go-hclog"
 )
 
 // Exit codes are int values that represent an exit code for a particular error.
@@ -48,6 +50,7 @@ type CLI struct {
 	// stopCh is an internal channel used to trigger a shutdown of the CLI.
 	stopCh  chan struct{}
 	stopped bool
+	logger  hclog.Logger
 }
 
 // NewCLI creates a new CLI object with the given stdout and stderr streams.
@@ -57,6 +60,10 @@ func NewCLI(out, err io.Writer) *CLI {
 		errStream: err,
 		signalCh:  make(chan os.Signal, 1),
 		stopCh:    make(chan struct{}),
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:       "cli",
+			JSONFormat: hlogging.ParseEnvLogFormat() == hlogging.JSONFormat,
+		}),
 	}
 }
 
@@ -78,9 +85,9 @@ func (cli *CLI) Run(args []string) int {
 	cliConfig := config.Copy()
 
 	// Load configuration paths, with CLI taking precedence
-	config, err = loadConfigs(paths, cliConfig)
+	config, err = loadConfigs(paths, cliConfig, cli.logger)
 	if err != nil {
-		return logError(err, ExitCodeConfigError)
+		return logError(err, ExitCodeConfigError, cli.logger)
 	}
 
 	config.Finalize()
@@ -88,17 +95,17 @@ func (cli *CLI) Run(args []string) int {
 	// Setup the config and logging
 	config, err = cli.setup(config)
 	if err != nil {
-		return logError(err, ExitCodeConfigError)
+		return logError(err, ExitCodeConfigError, cli.logger)
 	}
 
 	// Print version information for debugging
-	log.Printf("[INFO] %s", version.HumanVersion)
+	cli.logger.Info(fmt.Sprintf("%s", version.HumanVersion))
 
 	// If the version was requested, return an "error" containing the version
 	// information. This might sound weird, but most *nix applications actually
 	// print their version on stderr anyway.
 	if isVersion {
-		log.Printf("[DEBUG] (cli) version flag was given, exiting now")
+		cli.logger.Debug("version flag was given, exiting now")
 		fmt.Fprintf(cli.outStream, "%s\n", version.HumanVersion)
 		return ExitCodeOK
 	}
@@ -106,7 +113,7 @@ func (cli *CLI) Run(args []string) int {
 	// Initial runner
 	runner, err := manager.NewRunner(config, dry)
 	if err != nil {
-		return logError(err, ExitCodeRunnerError)
+		return logError(err, ExitCodeRunnerError, cli.logger)
 	}
 	go runner.Start()
 
@@ -122,7 +129,7 @@ func (cli *CLI) Run(args []string) int {
 			if typed, ok := err.(manager.ErrExitable); ok {
 				code = typed.ExitStatus()
 			}
-			return logError(err, code)
+			return logError(err, code, cli.logger)
 		case <-runner.DoneCh:
 			return ExitCodeOK
 		case <-service_os.Shutdown_Channel():
@@ -130,7 +137,7 @@ func (cli *CLI) Run(args []string) int {
 			runner.StopImmediately()
 			return ExitCodeInterrupt
 		case s := <-cli.signalCh:
-			log.Printf("[DEBUG] (cli) receiving signal %q", s)
+			cli.logger.Debug(fmt.Sprintf("receiving signal %q", s))
 
 			switch s {
 			case *config.ReloadSignal:
@@ -138,21 +145,21 @@ func (cli *CLI) Run(args []string) int {
 				runner.Stop()
 
 				// Re-parse any configuration files or paths
-				config, err = loadConfigs(paths, cliConfig)
+				config, err = loadConfigs(paths, cliConfig, cli.logger)
 				if err != nil {
-					return logError(err, ExitCodeConfigError)
+					return logError(err, ExitCodeConfigError, cli.logger)
 				}
 				config.Finalize()
 
 				// Load the new configuration from disk
 				config, err = cli.setup(config)
 				if err != nil {
-					return logError(err, ExitCodeConfigError)
+					return logError(err, ExitCodeConfigError, cli.logger)
 				}
 
 				runner, err = manager.NewRunner(config, dry)
 				if err != nil {
-					return logError(err, ExitCodeRunnerError)
+					return logError(err, ExitCodeRunnerError, cli.logger)
 				}
 				go runner.Start()
 			case *config.KillSignal:
@@ -201,7 +208,7 @@ func (cli *CLI) ParseFlags(args []string) (
 	c := config.DefaultConfig()
 
 	if s := os.Getenv("CT_LOCAL_CONFIG"); s != "" {
-		envConfig, err := config.Parse(s)
+		envConfig, err := config.Parse(s, cli.logger)
 		if err != nil {
 			return nil, nil, false, false, err
 		}
@@ -578,11 +585,11 @@ func (cli *CLI) ParseFlags(args []string) (
 // configuration is the list of overrides to apply at the very end, taking
 // precedence over any configurations that were loaded from the paths. If any
 // errors occur when reading or parsing those sub-configs, it is returned.
-func loadConfigs(paths []string, o *config.Config) (*config.Config, error) {
+func loadConfigs(paths []string, o *config.Config, logger hclog.Logger) (*config.Config, error) {
 	finalC := config.DefaultConfig()
 
 	for _, path := range paths {
-		c, err := config.FromPath(path)
+		c, err := config.FromPath(path, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -596,8 +603,8 @@ func loadConfigs(paths []string, o *config.Config) (*config.Config, error) {
 }
 
 // logError logs an error message and then returns the given status.
-func logError(err error, status int) int {
-	log.Printf("[ERR] (cli) %s", err)
+func logError(err error, status int, logger hclog.Logger) int {
+	logger.Error(fmt.Sprintf("%s", err))
 	return status
 }
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/TerminusDeus/consul-template/signals"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/mitchellh/mapstructure"
@@ -232,7 +233,7 @@ func (c *Config) Merge(o *Config) *Config {
 }
 
 // Parse parses the given string contents as a config
-func Parse(s string) (*Config, error) {
+func Parse(s string, logger hclog.Logger) (*Config, error) {
 	var shadow interface{}
 	if err := hcl.Decode(&shadow, s); err != nil {
 		return nil, errors.Wrap(err, "error decoding config")
@@ -285,7 +286,7 @@ func Parse(s string) (*Config, error) {
 	var md mapstructure.Metadata
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			ConsulStringToStructFunc(),
+			ConsulStringToStructFunc(logger),
 			StringToFileModeFunc(),
 			signals.StringToSignalFunc(),
 			StringToWaitDurationHookFunc(),
@@ -308,8 +309,8 @@ func Parse(s string) (*Config, error) {
 
 // Must returns a config object that must compile. If there are any errors, this
 // function will panic. This is most useful in testing or constants.
-func Must(s string) *Config {
-	c, err := Parse(s)
+func Must(s string, logger hclog.Logger) *Config {
+	c, err := Parse(s, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -326,13 +327,13 @@ func TestConfig(c *Config) *Config {
 
 // FromFile reads the configuration file at the given path and returns a new
 // Config struct with the data populated.
-func FromFile(path string) (*Config, error) {
+func FromFile(path string, logger hclog.Logger) (*Config, error) {
 	c, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "from file: "+path)
 	}
 
-	config, err := Parse(string(c))
+	config, err := Parse(string(c), logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "from file: "+path)
 	}
@@ -341,7 +342,7 @@ func FromFile(path string) (*Config, error) {
 
 // FromPath iterates and merges all configuration files in a given
 // directory, returning the resulting config.
-func FromPath(path string) (*Config, error) {
+func FromPath(path string, logger hclog.Logger) (*Config, error) {
 	// Ensure the given filepath exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, errors.Wrap(err, "missing file/folder: "+path)
@@ -377,7 +378,7 @@ func FromPath(path string) (*Config, error) {
 			}
 
 			// Parse and merge the config
-			newConfig, err := FromFile(path)
+			newConfig, err := FromFile(path, logger)
 			if err != nil {
 				return err
 			}
@@ -392,7 +393,7 @@ func FromPath(path string) (*Config, error) {
 
 		return c, nil
 	} else if stat.Mode().IsRegular() {
-		return FromFile(path)
+		return FromFile(path, logger)
 	}
 
 	return nil, fmt.Errorf("unknown filetype: %q", stat.Mode().String())

@@ -2,9 +2,9 @@ package dependency
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -26,7 +26,7 @@ func NewConnectLeafQuery(service string) *ConnectLeafQuery {
 	}
 }
 
-func (d *ConnectLeafQuery) Fetch(clients *ClientSet, opts *QueryOptions) (
+func (d *ConnectLeafQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (
 	interface{}, *ResponseMetadata, error,
 ) {
 	select {
@@ -35,10 +35,10 @@ func (d *ConnectLeafQuery) Fetch(clients *ClientSet, opts *QueryOptions) (
 	default:
 	}
 	opts = opts.Merge(nil)
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/agent/connect/ca/leaf/" + d.service,
 		RawQuery: opts.String(),
-	})
+	}))
 
 	cert, md, err := clients.Consul().Agent().ConnectCALeaf(d.service,
 		opts.ToConsulOpts())
@@ -46,7 +46,7 @@ func (d *ConnectLeafQuery) Fetch(clients *ClientSet, opts *QueryOptions) (
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
-	log.Printf("[TRACE] %s: returned response", d)
+	logger.Trace(fmt.Sprintf("%s: returned response", d))
 
 	rm := &ResponseMetadata{
 		LastIndex:   md.LastIndex,

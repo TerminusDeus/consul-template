@@ -3,11 +3,11 @@ package dependency
 import (
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 	"strings"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -60,7 +60,7 @@ func NewKVListQuery(s string) (*KVListQuery, error) {
 }
 
 // Fetch queries the Consul API defined by the given client.
-func (d *KVListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *KVListQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
 		return nil, nil, ErrStopped
@@ -71,17 +71,17 @@ func (d *KVListQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}
 		Datacenter: d.dc,
 	})
 
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/kv/" + d.prefix,
 		RawQuery: opts.String(),
-	})
+	}))
 
 	list, qm, err := clients.Consul().KV().List(d.prefix, opts.ToConsulOpts())
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
-	log.Printf("[TRACE] %s: returned %d pairs", d, len(list))
+	logger.Trace(fmt.Sprintf("%s: returned %d pairs", d, len(list)))
 
 	pairs := make([]*KeyPair, 0, len(list))
 	for _, pair := range list {

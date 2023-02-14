@@ -212,7 +212,7 @@ func (v *View) fetch(doneCh, successCh chan<- struct{}, errCh chan<- error) {
 			AllowStale: allowStale,
 			WaitTime:   v.blockQueryWaitTime,
 			WaitIndex:  v.lastIndex,
-		})
+		}, v.logger)
 		if err != nil {
 			if err == dep.ErrStopped {
 				v.logger.Trace(fmt.Sprintf("%s reported stop", v.dependency))

@@ -3,11 +3,11 @@ package dependency
 import (
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 	"sort"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 )
 
@@ -58,7 +58,7 @@ func NewCatalogNodesQuery(s string) (*CatalogNodesQuery, error) {
 
 // Fetch queries the Consul API defined by the given client and returns a slice
 // of Node objects
-func (d *CatalogNodesQuery) Fetch(clients *ClientSet, opts *QueryOptions) (interface{}, *ResponseMetadata, error) {
+func (d *CatalogNodesQuery) Fetch(clients *ClientSet, opts *QueryOptions, logger hclog.Logger) (interface{}, *ResponseMetadata, error) {
 	select {
 	case <-d.stopCh:
 		return nil, nil, ErrStopped
@@ -70,16 +70,16 @@ func (d *CatalogNodesQuery) Fetch(clients *ClientSet, opts *QueryOptions) (inter
 		Near:       d.near,
 	})
 
-	log.Printf("[TRACE] %s: GET %s", d, &url.URL{
+	logger.Trace(fmt.Sprintf("%s: GET %s", d, &url.URL{
 		Path:     "/v1/catalog/nodes",
 		RawQuery: opts.String(),
-	})
+	}))
 	n, qm, err := clients.Consul().Catalog().Nodes(opts.ToConsulOpts())
 	if err != nil {
 		return nil, nil, errors.Wrap(err, d.String())
 	}
 
-	log.Printf("[TRACE] %s: returned %d results", d, len(n))
+	logger.Trace(fmt.Sprintf("%s: returned %d results", d, len(n)))
 
 	nodes := make([]*Node, 0, len(n))
 	for _, node := range n {
